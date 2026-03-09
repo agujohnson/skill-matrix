@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  auth, login, logout,
-  getUserProfile,
+  auth, login, register, loginWithMicrosoft, logout,
+  getUserProfile, createUserProfile,
   saveAssessment, getAssessments, onAssessmentsSnapshot,
   saveUserCerts, getUserCerts, onUserCertsSnapshot,
   getCategories, saveCategories,
@@ -11,33 +11,37 @@ import { onAuthStateChanged } from 'firebase/auth'
 
 // ─── Palette & Fonts ──────────────────────────────────────────────────────────
 const STYLE = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --ink:    #0d0f14;
-    --paper:  #f5f3ee;
-    --panel:  #ffffff;
-    --muted:  #8a8f9e;
-    --border: #e2dfd8;
-    --accent: #2563eb;
-    --accent2: #0ea5e9;
-    --success: #16a34a;
-    --warn:    #d97706;
-    --danger:  #dc2626;
-    --grad: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
+    --ink:     #f0f0f5;
+    --paper:   #0a0a0f;
+    --panel:   #13131a;
+    --panel2:  #1a1a24;
+    --muted:   #6b6b80;
+    --border:  #2a2a38;
+    --accent:  #e00080;
+    --accent2: #ff2d9b;
+    --success: #00d084;
+    --warn:    #ffb800;
+    --danger:  #ff4444;
+    --grad:    linear-gradient(135deg, #e00080 0%, #ff6030 100%);
+    --glow:    0 0 24px #e0008044;
   }
 
-  html, body, #root { height: 100%; font-family: 'DM Sans', sans-serif; background: var(--paper); color: var(--ink); }
-  h1,h2,h3,h4,h5 { font-family: 'Syne', sans-serif; }
+  html, body, #root { height: 100%; font-family: 'Inter', sans-serif; background: var(--paper); color: var(--ink); }
+  h1,h2,h3,h4,h5 { font-family: 'Space Grotesk', sans-serif; }
 
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: var(--paper); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
-  @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-  .fadeUp { animation: fadeUp .35s ease both; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes glow { 0%,100% { box-shadow: 0 0 20px #e0008033; } 50% { box-shadow: 0 0 40px #e0008066; } }
+  .fadeUp { animation: fadeUp .4s cubic-bezier(.16,1,.3,1) both; }
 `
 
 // ─── Seed Data (used on first load if Firestore is empty) ─────────────────────
@@ -103,11 +107,11 @@ const SEED_CERTS = [
 ]
 
 const PROFICIENCY = [
-  { val: 0, label: 'N/A',       color: '#e5e7eb', textColor: '#6b7280' },
-  { val: 1, label: 'Awareness', color: '#dbeafe', textColor: '#1d4ed8' },
-  { val: 2, label: 'Working',   color: '#d1fae5', textColor: '#065f46' },
-  { val: 3, label: 'Advanced',  color: '#fef3c7', textColor: '#92400e' },
-  { val: 4, label: 'Expert',    color: '#ffe4e6', textColor: '#9f1239' },
+  { val: 0, label: 'N/A',       color: '#1e1e2a', textColor: '#4a4a60' },
+  { val: 1, label: 'Awareness', color: '#0d1a2e', textColor: '#4a90d9' },
+  { val: 2, label: 'Working',   color: '#0a1f18', textColor: '#00c87a' },
+  { val: 3, label: 'Advanced',  color: '#1f1a00', textColor: '#ffc400' },
+  { val: 4, label: 'Expert',    color: '#2a0a1a', textColor: '#ff4da6' },
 ]
 
 const INTEREST = ['Low', 'Medium', 'High']
@@ -119,9 +123,11 @@ const Avatar = ({ name, size = 36, style: s = {} }) => {
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
-      background: `hsl(${hue},55%,55%)`, color: '#fff',
+      background: `hsl(${hue},60%,35%)`,
+      border: `1.5px solid hsl(${hue},60%,45%)`,
+      color: `hsl(${hue},80%,85%)`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: size * 0.38, flexShrink: 0, ...s,
+      fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: size * 0.36, flexShrink: 0, ...s,
     }}>{initials}</div>
   )
 }
@@ -143,43 +149,51 @@ const Btn = ({ children, onClick, variant = 'primary', small = false, disabled =
     display: 'inline-flex', alignItems: 'center', gap: 6,
     padding: small ? '6px 14px' : '10px 22px',
     borderRadius: 8, border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
-    fontFamily: 'DM Sans, sans-serif', fontWeight: 500, fontSize: small ? 13 : 14,
-    transition: 'all .15s', opacity: disabled ? .55 : 1,
+    fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600, fontSize: small ? 12 : 14,
+    transition: 'all .2s', opacity: disabled ? .4 : 1, letterSpacing: '.01em',
   }
   const variants = {
-    primary:   { background: 'var(--grad)', color: '#fff', boxShadow: '0 2px 8px #2563eb33' },
-    secondary: { background: 'var(--panel)', color: 'var(--ink)', border: '1.5px solid var(--border)' },
-    danger:    { background: '#fee2e2', color: '#dc2626' },
+    primary:   { background: 'var(--grad)', color: '#fff', boxShadow: 'var(--glow)' },
+    secondary: { background: 'var(--panel2)', color: 'var(--ink)', border: '1px solid var(--border)' },
+    danger:    { background: '#2a0a0a', color: 'var(--danger)', border: '1px solid #3a1a1a' },
     ghost:     { background: 'transparent', color: 'var(--accent)', padding: small ? '4px 8px' : '8px 12px' },
   }
   return <button style={{ ...base, ...variants[variant], ...s }} onClick={onClick} disabled={disabled}>{children}</button>
 }
 
 const Input = ({ label, value, onChange, type = 'text', placeholder = '' }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-    {label && <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</label>}
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    {label && <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em', fontFamily: 'Space Grotesk, sans-serif' }}>{label}</label>}
     <input
       type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
       style={{
-        padding: '10px 14px', borderRadius: 8, border: '1.5px solid var(--border)',
-        fontFamily: 'DM Sans, sans-serif', fontSize: 14, background: 'var(--panel)', outline: 'none',
+        padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)',
+        fontFamily: 'Inter, sans-serif', fontSize: 14, background: 'var(--panel2)',
+        color: 'var(--ink)', outline: 'none', transition: 'border-color .15s',
       }}
-      onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-      onBlur={e => e.target.style.borderColor = 'var(--border)'}
+      onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px #e0008022'; }}
+      onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
     />
   </div>
 )
 
 const Card = ({ children, style: s = {}, onClick }) => (
   <div onClick={onClick} style={{
-    background: 'var(--panel)', borderRadius: 14, border: '1.5px solid var(--border)',
-    padding: 20, transition: 'box-shadow .15s', cursor: onClick ? 'pointer' : 'default', ...s,
-  }}>{children}</div>
+    background: 'var(--panel)', borderRadius: 12, border: '1px solid var(--border)',
+    padding: 20, transition: 'all .2s', cursor: onClick ? 'pointer' : 'default',
+    ...(onClick ? {} : {}), ...s,
+  }}
+  onMouseEnter={onClick ? e => { e.currentTarget.style.borderColor = '#e0008055'; e.currentTarget.style.transform = 'translateY(-1px)'; } : undefined}
+  onMouseLeave={onClick ? e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'none'; } : undefined}
+  >{children}</div>
 )
 
 const Spinner = () => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--muted)', fontFamily: 'Syne, sans-serif', fontSize: 15 }}>
-    Loading…
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 16, background: 'var(--paper)' }}>
+    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--grad)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'glow 1.5s ease-in-out infinite' }}>
+      <span style={{ color: '#fff', fontSize: 18 }}>◈</span>
+    </div>
+    <span style={{ color: 'var(--muted)', fontFamily: 'Space Grotesk, sans-serif', fontSize: 13, letterSpacing: '.06em' }}>LOADING…</span>
   </div>
 )
 
@@ -197,7 +211,7 @@ export default function App() {
     return onAuthStateChanged(auth, async (u) => {
       if (u) {
         const p = await getUserProfile(u.uid)
-        setProfile(p)
+        setProfile(p) // null = new user, needs role setup
         setAuthUser(u)
       } else {
         setAuthUser(null)
@@ -251,8 +265,10 @@ export default function App() {
 
   const handleLogout = () => logout()
 
-  if (authUser === undefined) return <><style>{STYLE}</style><Spinner /></>
-  if (!authUser || !profile)  return <><style>{STYLE}</style><Login /></>
+  if (authUser === undefined) return <><style>{STYLE}</style><Spinner />
+  {/* show role setup for new Microsoft SSO users who have no Firestore profile yet */}
+  if (authUser && !profile) return <><style>{STYLE}</style><RoleSetup authUser={authUser} onComplete={setProfile} /></>
+  if (!authUser) return <><style>{STYLE}</style><Login /></>
 
   const ctx = {
     user: { ...profile, uid: authUser.uid },
@@ -273,43 +289,222 @@ export default function App() {
   )
 }
 
-// ─── Login ────────────────────────────────────────────────────────────────────
+// ─── Login / Register ─────────────────────────────────────────────────────────
 function Login() {
-  const [email, setEmail] = useState('')
-  const [pass, setPass]   = useState('')
-  const [err, setErr]     = useState('')
+  const [tab, setTab]         = useState('login') // 'login' | 'signup'
+  const [name, setName]       = useState('')
+  const [email, setEmail]     = useState('')
+  const [pass, setPass]       = useState('')
+  const [pass2, setPass2]     = useState('')
+  const [team, setTeam]       = useState('')
+  const [role, setRole]       = useState('member')
+  const [err, setErr]         = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleLogin = async () => {
     setErr(''); setLoading(true)
+    try { await login(email, pass) }
+    catch { setErr('Invalid email or password.') }
+    finally { setLoading(false) }
+  }
+
+  const handleSignup = async () => {
+    setErr('')
+    if (!name.trim())         return setErr('Please enter your full name.')
+    if (!team.trim())         return setErr('Please enter your practice / team.')
+    if (pass !== pass2)       return setErr('Passwords do not match.')
+    if (pass.length < 6)      return setErr('Password must be at least 6 characters.')
+    setLoading(true)
     try {
-      await login(email, pass)
-    } catch {
-      setErr('Invalid email or password.')
-    } finally {
-      setLoading(false)
+      const cred = await register(email, pass)
+      await createUserProfile(cred.user.uid, {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        role,
+        team: team.trim(),
+      })
+      // onAuthStateChanged will pick up the new user automatically
+    } catch (e) {
+      if (e.code === 'auth/email-already-in-use') setErr('An account with this email already exists.')
+      else if (e.code === 'auth/invalid-email')   setErr('Please enter a valid email address.')
+      else setErr('Sign up failed. Please try again.')
+    } finally { setLoading(false) }
+  }
+
+  const Logo = () => (
+    <div style={{ textAlign: 'center', marginBottom: 4 }}>
+      <img src="/logo.png" alt="Reailize" style={{ height: 36, objectFit: 'contain', marginBottom: 12 }} />
+      <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600, fontSize: 15, color: 'var(--muted)', letterSpacing: '.04em', marginBottom: 6 }}>
+        SKILL MATRIX
+      </div>
+      <p style={{ color: 'var(--muted)', fontSize: 13 }}>
+        {tab === 'login' ? 'Sign in to manage your skills & certifications.' : 'Create your account to get started.'}
+      </p>
+    </div>
+  )
+
+  // Tab switcher
+  const Tabs = () => (
+    <div style={{ display: 'flex', background: 'var(--panel)', borderRadius: 10, padding: 4, gap: 4, border: '1px solid var(--border)' }}>
+      {[['login', 'Sign in'], ['signup', 'Create account']].map(([key, label]) => (
+        <button key={key} onClick={() => { setTab(key); setErr('') }} style={{
+          flex: 1, padding: '8px 0', borderRadius: 7, border: 'none', cursor: 'pointer',
+          fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600, fontSize: 13,
+          background: tab === key ? 'var(--grad)' : 'transparent',
+          color: tab === key ? '#fff' : 'var(--muted)',
+          boxShadow: tab === key ? 'var(--glow)' : 'none',
+          transition: 'all .2s',
+        }}>{label}</button>
+      ))}
+    </div>
+  )
+
+  return (
+    <div style={{
+      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'var(--paper)',
+      backgroundImage: 'radial-gradient(ellipse 80% 60% at 50% -10%, #e0008018 0%, transparent 70%)',
+    }}>
+      <div className="fadeUp" style={{ width: 440, display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <Logo />
+        <Tabs />
+
+        {/* ── Sign In ── */}
+        {tab === 'login' && (
+          <Card>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <Input label="Email" type="email" value={email} onChange={setEmail} placeholder="you@b-yond.com" />
+              <Input label="Password" type="password" value={pass} onChange={setPass} placeholder="••••••••" />
+              {err && <p style={{ fontSize: 13, color: 'var(--danger)' }}>{err}</p>}
+              <Btn onClick={handleLogin} disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
+                {loading ? 'Signing in…' : 'Sign in'}
+              </Btn>
+              <p style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>
+                No account yet?{' '}
+                <span onClick={() => setTab('signup')} style={{ color: 'var(--accent)', cursor: 'pointer', fontWeight: 600 }}>Create one →</span>
+              </p>
+            </div>
+          </Card>
+        )}
+
+        {/* ── Sign Up ── */}
+        {tab === 'signup' && (
+          <Card>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <Input label="Full Name" value={name} onChange={setName} placeholder="e.g. Alejandro Islas" />
+              <Input label="Work Email" type="email" value={email} onChange={setEmail} placeholder="you@b-yond.com" />
+
+              {/* Role picker */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 8 }}>
+                  Your Role
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {[
+                    { val: 'member',  label: '👷 Team Member',      desc: 'Rate my own skills' },
+                    { val: 'manager', label: '📊 Practice Manager', desc: 'View team dashboards' },
+                  ].map(r => (
+                    <div key={r.val} onClick={() => setRole(r.val)} style={{
+                      padding: '10px 12px', borderRadius: 9, border: '2px solid',
+                      borderColor: role === r.val ? 'var(--accent)' : 'var(--border)',
+                      background: role === r.val ? '#eff6ff' : 'transparent',
+                      cursor: 'pointer', transition: 'all .15s',
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{r.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{r.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Input label="Practice / Team" value={team} onChange={setTeam} placeholder="e.g. Cloud Engineering" />
+              <Input label="Password" type="password" value={pass} onChange={setPass} placeholder="Min. 6 characters" />
+              <Input label="Confirm Password" type="password" value={pass2} onChange={setPass2} placeholder="Repeat password" />
+
+              {err && <p style={{ fontSize: 13, color: 'var(--danger)' }}>{err}</p>}
+
+              <Btn onClick={handleSignup} disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
+                {loading ? 'Creating account…' : 'Create account →'}
+              </Btn>
+
+              <p style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>
+                Already have an account?{' '}
+                <span onClick={() => setTab('login')} style={{ color: 'var(--accent)', cursor: 'pointer', fontWeight: 600 }}>Sign in</span>
+              </p>
+            </div>
+          </Card>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Role Setup (first Microsoft login) ──────────────────────────────────────
+function RoleSetup({ authUser, onComplete }) {
+  const [role, setRole]   = useState('')
+  const [team, setTeam]   = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    if (!role || !team.trim()) return
+    setSaving(true)
+    const profile = {
+      name:  authUser.displayName || authUser.email.split('@')[0],
+      email: authUser.email,
+      role,
+      team: team.trim(),
     }
+    await createUserProfile(authUser.uid, profile)
+    onComplete({ id: authUser.uid, ...profile })
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--paper)' }}>
-      <div className="fadeUp" style={{ width: 400, display: 'flex', flexDirection: 'column', gap: 28 }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--grad)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ color: '#fff', fontSize: 18 }}>◈</span>
-            </div>
-            <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 20 }}>Reailize Skill Matrix</span>
-          </div>
-          <p style={{ color: 'var(--muted)', fontSize: 14 }}>Sign in to manage your skills & certifications.</p>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--paper)', backgroundImage: 'radial-gradient(ellipse 80% 60% at 50% -10%, #e0008018 0%, transparent 70%)' }}>
+      <div className="fadeUp" style={{ width: 440, display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ textAlign: 'center' }}>
+          <img src="/logo.png" alt="Reailize" style={{ height: 32, objectFit: 'contain', marginBottom: 10 }} />
+          <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 18, marginBottom: 6 }}>Welcome!</div>
+          <p style={{ color: 'var(--muted)', fontSize: 14 }}>
+            Hi <strong style={{ color: 'var(--ink)' }}>{authUser.displayName || authUser.email}</strong>! Just a couple of quick questions before we get started.
+          </p>
         </div>
+
         <Card>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <Input label="Email" type="email" value={email} onChange={setEmail} placeholder="you@reailize.com" />
-            <Input label="Password" type="password" value={pass} onChange={setPass} placeholder="••••••••" />
-            {err && <p style={{ fontSize: 13, color: 'var(--danger)' }}>{err}</p>}
-            <Btn onClick={handleLogin} disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
-              {loading ? 'Signing in…' : 'Sign in'}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+            {/* Role picker */}
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 10 }}>
+                What is your role?
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {[
+                  { val: 'member',  label: '👷 Team Member',   desc: 'I rate my own skills' },
+                  { val: 'manager', label: '📊 Practice Manager', desc: 'I view team dashboards' },
+                ].map(r => (
+                  <div key={r.val} onClick={() => setRole(r.val)} style={{
+                    padding: '14px 16px', borderRadius: 10, border: '2px solid',
+                    borderColor: role === r.val ? 'var(--accent)' : 'var(--border)',
+                    background: role === r.val ? '#eff6ff' : 'var(--panel)',
+                    cursor: 'pointer', transition: 'all .15s',
+                  }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{r.label}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>{r.desc}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Team/practice */}
+            <Input
+              label="Your Practice / Team"
+              value={team}
+              onChange={setTeam}
+              placeholder="e.g. Cloud Engineering, Network, Lab…"
+            />
+
+            <Btn onClick={handleSave} disabled={!role || !team.trim() || saving} style={{ width: '100%', justifyContent: 'center' }}>
+              {saving ? 'Setting up…' : 'Get started →'}
             </Btn>
           </div>
         </Card>
@@ -321,39 +516,45 @@ function Login() {
 // ─── Shell ────────────────────────────────────────────────────────────────────
 function Shell({ user, onLogout, nav, activeTab, setActiveTab, children }) {
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--paper)' }}>
       <header style={{
         position: 'sticky', top: 0, zIndex: 100,
-        background: 'var(--panel)', borderBottom: '1.5px solid var(--border)',
-        display: 'flex', alignItems: 'center', padding: '0 28px', height: 58, gap: 20,
+        background: 'rgba(10,10,15,0.92)', backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', padding: '0 28px', height: 60, gap: 24,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 16 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--grad)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: '#fff', fontSize: 14 }}>◈</span>
-          </div>
-          <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 16 }}>Reailize Skill Matrix</span>
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginRight: 8 }}>
+          <img src="/logo.png" alt="Reailize" style={{ height: 22, objectFit: 'contain' }} />
+          <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
+          <span style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600, fontSize: 13, color: 'var(--muted)', letterSpacing: '.02em' }}>Skill Matrix</span>
         </div>
-        <nav style={{ display: 'flex', gap: 4, flex: 1 }}>
+
+        {/* Nav */}
+        <nav style={{ display: 'flex', gap: 2, flex: 1 }}>
           {nav.map(n => (
             <button key={n.key} onClick={() => setActiveTab(n.key)} style={{
               padding: '6px 14px', borderRadius: 7, border: 'none', cursor: 'pointer',
-              fontFamily: 'DM Sans, sans-serif', fontWeight: 500, fontSize: 13,
-              background: activeTab === n.key ? '#eff6ff' : 'transparent',
+              fontFamily: 'Space Grotesk, sans-serif', fontWeight: 500, fontSize: 13,
+              background: activeTab === n.key ? '#e0008018' : 'transparent',
               color: activeTab === n.key ? 'var(--accent)' : 'var(--muted)',
-              transition: 'all .15s',
+              borderBottom: activeTab === n.key ? '2px solid var(--accent)' : '2px solid transparent',
+              transition: 'all .15s', borderRadius: '7px 7px 0 0',
             }}>{n.icon} {n.label}</button>
           ))}
         </nav>
+
+        {/* User */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Avatar name={user.name} size={30} />
           <div style={{ lineHeight: 1.3 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{user.name}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, fontFamily: 'Space Grotesk, sans-serif' }}>{user.name}</div>
             <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'capitalize' }}>{user.role}</div>
           </div>
-          <Btn variant="ghost" small onClick={onLogout} style={{ marginLeft: 4 }}>Sign out</Btn>
+          <Btn variant="ghost" small onClick={onLogout} style={{ marginLeft: 4, color: 'var(--muted)', fontSize: 12 }}>Sign out</Btn>
         </div>
       </header>
-      <main style={{ flex: 1, padding: '28px', maxWidth: 1200, margin: '0 auto', width: '100%' }}>
+      <main style={{ flex: 1, padding: '32px 28px', maxWidth: 1280, margin: '0 auto', width: '100%' }}>
         {children}
       </main>
     </div>
@@ -530,7 +731,7 @@ function ManagerApp(ctx) {
 function Heatmap({ assessments, categories }) {
   // In the real app, users come from Firestore. Here we derive from assessment keys.
   const memberIds = Object.keys(assessments)
-  const profColor = v => ['#f3f4f6','#dbeafe','#d1fae5','#fef3c7','#fee2e2'][v] || '#f3f4f6'
+  const profColor = v => ['#1e1e2a','#0d1a2e','#0a1f18','#1f1a00','#2a0a1a'][v] || '#1e1e2a'
 
   const totalAssessed = Object.values(assessments).reduce((s, u) => s + Object.values(u).filter(a => a.prof > 0).length, 0)
   const allVals = Object.values(assessments).flatMap(u => Object.values(u).map(a => a.prof)).filter(v => v > 0)
@@ -545,7 +746,7 @@ function Heatmap({ assessments, categories }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         {[
-          { label: 'Team Members',      val: memberIds.length, icon: '👥' },
+          { label: 'Team Members', val: memberIds.length, icon: '👥' },
           { label: 'Skills Tracked',    val: categories.reduce((s, c) => s + c.skills.length, 0), icon: '🧠' },
           { label: 'Assessments Done',  val: totalAssessed, icon: '✅' },
           { label: 'Avg Proficiency',   val: avgProf, icon: '📈' },
@@ -694,7 +895,7 @@ function DomainView({ assessments, categories }) {
           </div>
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
             <thead>
-              <tr style={{ background: '#f9fafb' }}>
+              <tr style={{ background: 'var(--panel2)' }}>
                 {['Skill', 'Team Avg', 'High Interest', 'Coverage'].map(h => (
                   <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
                 ))}

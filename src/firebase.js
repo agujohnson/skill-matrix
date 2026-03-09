@@ -1,13 +1,11 @@
 // src/firebase.js
-// ─────────────────────────────────────────────────────────────────────────────
-// Firebase initialisation + Firestore helpers used throughout the app.
-// All env vars come from .env.local (see .env.example).
-// ─────────────────────────────────────────────────────────────────────────────
-
 import { initializeApp } from 'firebase/app'
 import {
   getAuth,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  OAuthProvider,
   signOut,
   onAuthStateChanged,
 } from 'firebase/auth'
@@ -17,7 +15,6 @@ import {
   getDoc,
   setDoc,
   collection,
-  getDocs,
   onSnapshot,
 } from 'firebase/firestore'
 
@@ -30,34 +27,46 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
-const app  = initializeApp(firebaseConfig)
+const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db   = getFirestore(app)
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-export const login  = (email, password) => signInWithEmailAndPassword(auth, email, password)
+export const login = (email, password) =>
+  signInWithEmailAndPassword(auth, email, password)
+
+export const register = async (email, password) =>
+  createUserWithEmailAndPassword(auth, email, password)
+
+export const loginWithMicrosoft = () => {
+  const provider = new OAuthProvider('microsoft.com')
+  provider.setCustomParameters({ tenant: import.meta.env.VITE_AZURE_TENANT_ID })
+  return signInWithPopup(auth, provider)
+}
+
 export const logout = () => signOut(auth)
 
-/** Returns user profile doc from Firestore (role, name, team …) */
+/** Returns user profile doc from Firestore — null if not yet created */
 export const getUserProfile = async (uid) => {
   const snap = await getDoc(doc(db, 'users', uid))
   return snap.exists() ? { id: snap.id, ...snap.data() } : null
 }
 
+/** Create a user profile (called on first Microsoft login) */
+export const createUserProfile = (uid, data) =>
+  setDoc(doc(db, 'users', uid), data)
+
 // ─── Assessments ──────────────────────────────────────────────────────────────
 
-/** Save a single skill assessment for a user */
 export const saveAssessment = (userId, skillId, data) =>
   setDoc(doc(db, 'assessments', userId), { [skillId]: data }, { merge: true })
 
-/** Get all assessments for one user */
 export const getAssessments = async (userId) => {
   const snap = await getDoc(doc(db, 'assessments', userId))
   return snap.exists() ? snap.data() : {}
 }
 
-/** Real-time listener for all assessments (manager view) */
 export const onAssessmentsSnapshot = (callback) =>
   onSnapshot(collection(db, 'assessments'), (snap) => {
     const data = {}
