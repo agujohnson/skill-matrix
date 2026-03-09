@@ -265,8 +265,7 @@ export default function App() {
 
   const handleLogout = () => logout()
 
-  if (authUser === undefined) return <><style>{STYLE}</style><Spinner />
-  {/* show role setup for new Microsoft SSO users who have no Firestore profile yet */}
+  if (authUser === undefined) return <><style>{STYLE}</style><Spinner /></>
   if (authUser && !profile) return <><style>{STYLE}</style><RoleSetup authUser={authUser} onComplete={setProfile} /></>
   if (!authUser) return <><style>{STYLE}</style><Login /></>
 
