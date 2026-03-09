@@ -332,7 +332,12 @@ function Login() {
 
   const Logo = () => (
     <div style={{ textAlign: 'center', marginBottom: 4 }}>
-      <img src="/logo.png" alt="Reailize" style={{ height: 36, objectFit: 'contain', marginBottom: 12 }} />
+      <div style={{ position: 'relative', display: 'inline-block', marginBottom: 12 }}>
+        {/* white layer for dark text */}
+        <img src="/logo.png" alt="Reailize" style={{ height: 36, objectFit: 'contain', filter: 'brightness(0) invert(1)', display: 'block' }} />
+        {/* magenta layer on top via mix-blend-mode */}
+        <img src="/logo.png" alt="Reailize" style={{ height: 36, objectFit: 'contain', position: 'absolute', top: 0, left: 0, mixBlendMode: 'lighten', display: 'block' }} />
+      </div>
       <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600, fontSize: 15, color: 'var(--muted)', letterSpacing: '.04em', marginBottom: 6 }}>
         SKILL MATRIX
       </div>
@@ -366,9 +371,8 @@ function Login() {
     }}>
       <div className="fadeUp" style={{ width: 440, display: 'flex', flexDirection: 'column', gap: 20 }}>
         <Logo />
-        <Tabs />
 
-        {/* ── Sign In ── */}
+        {/* ── Sign In ── */
         {tab === 'login' && (
           <Card>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -461,7 +465,10 @@ function RoleSetup({ authUser, onComplete }) {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--paper)', backgroundImage: 'radial-gradient(ellipse 80% 60% at 50% -10%, #e0008018 0%, transparent 70%)' }}>
       <div className="fadeUp" style={{ width: 440, display: 'flex', flexDirection: 'column', gap: 24 }}>
         <div style={{ textAlign: 'center' }}>
-          <img src="/logo.png" alt="Reailize" style={{ height: 32, objectFit: 'contain', marginBottom: 10 }} />
+<div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
+            <img src="/logo.png" alt="Reailize" style={{ height: 32, objectFit: 'contain', filter: 'brightness(0) invert(1)', display: 'block' }} />
+            <img src="/logo.png" alt="Reailize" style={{ height: 32, objectFit: 'contain', position: 'absolute', top: 0, left: 0, mixBlendMode: 'lighten', display: 'block' }} />
+          </div>
           <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 18, marginBottom: 6 }}>Welcome!</div>
           <p style={{ color: 'var(--muted)', fontSize: 14 }}>
             Hi <strong style={{ color: 'var(--ink)' }}>{authUser.displayName || authUser.email}</strong>! Just a couple of quick questions before we get started.
@@ -524,7 +531,10 @@ function Shell({ user, onLogout, nav, activeTab, setActiveTab, children }) {
       }}>
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginRight: 8 }}>
-          <img src="/logo.png" alt="Reailize" style={{ height: 22, objectFit: 'contain' }} />
+<div style={{ position: 'relative', display: 'inline-block' }}>
+            <img src="/logo.png" alt="Reailize" style={{ height: 22, objectFit: 'contain', filter: 'brightness(0) invert(1)', display: 'block' }} />
+            <img src="/logo.png" alt="Reailize" style={{ height: 22, objectFit: 'contain', position: 'absolute', top: 0, left: 0, mixBlendMode: 'lighten', display: 'block' }} />
+          </div>
           <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
           <span style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600, fontSize: 13, color: 'var(--muted)', letterSpacing: '.02em' }}>Skill Matrix</span>
         </div>
@@ -533,12 +543,12 @@ function Shell({ user, onLogout, nav, activeTab, setActiveTab, children }) {
         <nav style={{ display: 'flex', gap: 2, flex: 1 }}>
           {nav.map(n => (
             <button key={n.key} onClick={() => setActiveTab(n.key)} style={{
-              padding: '6px 14px', borderRadius: 7, border: 'none', cursor: 'pointer',
+              padding: '6px 14px', borderRadius: '7px 7px 0 0', border: 'none', cursor: 'pointer',
               fontFamily: 'Space Grotesk, sans-serif', fontWeight: 500, fontSize: 13,
               background: activeTab === n.key ? '#e0008018' : 'transparent',
               color: activeTab === n.key ? 'var(--accent)' : 'var(--muted)',
               borderBottom: activeTab === n.key ? '2px solid var(--accent)' : '2px solid transparent',
-              transition: 'all .15s', borderRadius: '7px 7px 0 0',
+              transition: 'all .15s',
             }}>{n.icon} {n.label}</button>
           ))}
         </nav>
