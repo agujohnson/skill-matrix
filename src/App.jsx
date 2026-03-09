@@ -372,7 +372,7 @@ function Login() {
       <div className="fadeUp" style={{ width: 440, display: 'flex', flexDirection: 'column', gap: 20 }}>
         <Logo />
 
-        {/* ── Sign In ── */
+        {/* ── Sign In ── */}
         {tab === 'login' && (
           <Card>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
