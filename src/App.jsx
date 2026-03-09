@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   auth, login, register, loginWithMicrosoft, logout,
   getUserProfile, createUserProfile,
+  onUsersSnapshot, updateUserProfile,
+  submitSuggestion, onSuggestionsSnapshot, approveSuggestion, rejectSuggestion,
   saveAssessment, getAssessments, onAssessmentsSnapshot,
   saveUserCerts, getUserCerts, onUserCertsSnapshot,
   getCategories, saveCategories,
@@ -233,7 +235,9 @@ export default function App() {
     if (profile.role === 'manager') {
       const unsub1 = onAssessmentsSnapshot(setAssessments)
       const unsub2 = onUserCertsSnapshot(setUserCerts)
-      return () => { unsub1(); unsub2() }
+      const unsub3 = onSuggestionsSnapshot(setSuggestions)
+      const unsub4 = onUsersSnapshot(setAllUsers)
+      return () => { unsub1(); unsub2(); unsub3(); unsub4() }
     } else {
       getAssessments(authUser.uid).then(a => setAssessments({ [authUser.uid]: a }))
       getUserCerts(authUser.uid).then(c => setUserCerts({ [authUser.uid]: c }))
@@ -277,13 +281,15 @@ export default function App() {
     setCerts: handleSaveCerts,
     setAssessment: handleSetAssessment,
     setUserCerts: handleSetUserCerts,
+    suggestions, setSuggestions,
+    allUsers, setAllUsers,
     onLogout: handleLogout,
   }
 
   return (
     <>
       <style>{STYLE}</style>
-      {profile.role === 'manager' ? <ManagerApp {...ctx} /> : <MemberApp {...ctx} />}
+      {['manager','lead'].includes(profile.role) ? <ManagerApp {...ctx} /> : <MemberApp {...ctx} />}
     </>
   )
 }
@@ -296,7 +302,7 @@ function Login() {
   const [pass, setPass]       = useState('')
   const [pass2, setPass2]     = useState('')
   const [team, setTeam]       = useState('')
-  const [role, setRole]       = useState('member')
+  const [role, setRole]       = useState('contributor')
   const [err, setErr]         = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -332,12 +338,7 @@ function Login() {
 
   const Logo = () => (
     <div style={{ textAlign: 'center', marginBottom: 4 }}>
-      <div style={{ position: 'relative', display: 'inline-block', marginBottom: 12 }}>
-        {/* white layer for dark text */}
-        <img src="/logo.png" alt="Reailize" style={{ height: 36, objectFit: 'contain', filter: 'brightness(0) invert(1)', display: 'block' }} />
-        {/* magenta layer on top via mix-blend-mode */}
-        <img src="/logo.png" alt="Reailize" style={{ height: 36, objectFit: 'contain', position: 'absolute', top: 0, left: 0, mixBlendMode: 'lighten', display: 'block' }} />
-      </div>
+      <img src="/logo.png" alt="Reailize" style={{ height: 36, objectFit: 'contain', marginBottom: 0 }} />
       <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600, fontSize: 15, color: 'var(--muted)', letterSpacing: '.04em', marginBottom: 6 }}>
         SKILL MATRIX
       </div>
@@ -404,13 +405,14 @@ function Login() {
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   {[
-                    { val: 'member',  label: '👷 Team Member',      desc: 'Rate my own skills' },
-                    { val: 'manager', label: '📊 Practice Manager', desc: 'View team dashboards' },
+                    { val: 'contributor', label: '👷 Contributor',       desc: 'Rate my own skills' },
+                    { val: 'lead',        label: '🎯 Practice Lead',     desc: 'Lead + view team' },
+                    { val: 'manager',     label: '📊 Practice Manager',  desc: 'Full admin access' },
                   ].map(r => (
                     <div key={r.val} onClick={() => setRole(r.val)} style={{
                       padding: '10px 12px', borderRadius: 9, border: '2px solid',
                       borderColor: role === r.val ? 'var(--accent)' : 'var(--border)',
-                      background: role === r.val ? '#eff6ff' : 'transparent',
+                      background: role === r.val ? '#e0008015' : 'transparent',
                       cursor: 'pointer', transition: 'all .15s',
                     }}>
                       <div style={{ fontWeight: 700, fontSize: 13 }}>{r.label}</div>
@@ -465,10 +467,7 @@ function RoleSetup({ authUser, onComplete }) {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--paper)', backgroundImage: 'radial-gradient(ellipse 80% 60% at 50% -10%, #e0008018 0%, transparent 70%)' }}>
       <div className="fadeUp" style={{ width: 440, display: 'flex', flexDirection: 'column', gap: 24 }}>
         <div style={{ textAlign: 'center' }}>
-<div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
-            <img src="/logo.png" alt="Reailize" style={{ height: 32, objectFit: 'contain', filter: 'brightness(0) invert(1)', display: 'block' }} />
-            <img src="/logo.png" alt="Reailize" style={{ height: 32, objectFit: 'contain', position: 'absolute', top: 0, left: 0, mixBlendMode: 'lighten', display: 'block' }} />
-          </div>
+<img src="/logo.png" alt="Reailize" style={{ height: 32, objectFit: 'contain', marginBottom: 10 }} />
           <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 18, marginBottom: 6 }}>Welcome!</div>
           <p style={{ color: 'var(--muted)', fontSize: 14 }}>
             Hi <strong style={{ color: 'var(--ink)' }}>{authUser.displayName || authUser.email}</strong>! Just a couple of quick questions before we get started.
@@ -485,8 +484,9 @@ function RoleSetup({ authUser, onComplete }) {
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {[
-                  { val: 'member',  label: '👷 Team Member',   desc: 'I rate my own skills' },
-                  { val: 'manager', label: '📊 Practice Manager', desc: 'I view team dashboards' },
+                  { val: 'contributor', label: '👷 Contributor',      desc: 'I rate my own skills' },
+                  { val: 'lead',        label: '🎯 Practice Lead',    desc: 'Lead + view team' },
+                  { val: 'manager',     label: '📊 Practice Manager', desc: 'Full admin access' },
                 ].map(r => (
                   <div key={r.val} onClick={() => setRole(r.val)} style={{
                     padding: '14px 16px', borderRadius: 10, border: '2px solid',
@@ -531,10 +531,7 @@ function Shell({ user, onLogout, nav, activeTab, setActiveTab, children }) {
       }}>
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginRight: 8 }}>
-<div style={{ position: 'relative', display: 'inline-block' }}>
-            <img src="/logo.png" alt="Reailize" style={{ height: 22, objectFit: 'contain', filter: 'brightness(0) invert(1)', display: 'block' }} />
-            <img src="/logo.png" alt="Reailize" style={{ height: 22, objectFit: 'contain', position: 'absolute', top: 0, left: 0, mixBlendMode: 'lighten', display: 'block' }} />
-          </div>
+<img src="/logo.png" alt="Reailize" style={{ height: 22, objectFit: 'contain' }} />
           <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
           <span style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600, fontSize: 13, color: 'var(--muted)', letterSpacing: '.02em' }}>Skill Matrix</span>
         </div>
@@ -585,26 +582,116 @@ function MemberApp(ctx) {
   )
 }
 
+function SuggestModal({ type, domainName, domainId, allDomains, user, onClose, onSubmit }) {
+  const [name, setName]     = useState('')
+  const [domain, setDomain] = useState(domainId || '')
+  const [provider, setProvider] = useState('')
+  const [level, setLevel]   = useState('Associate')
+  const [saving, setSaving] = useState(false)
+  const [done, setDone]     = useState(false)
+
+  const handleSubmit = async () => {
+    if (!name.trim()) return
+    setSaving(true)
+    const payload = type === 'skill'
+      ? { type: 'skill', skillName: name.trim(), domainId: domain, domainName: allDomains.find(d=>d.id===domain)?.name || domainName, suggestedBy: user.uid, suggestedByName: user.name }
+      : { type: 'cert',  certName: name.trim(), provider: provider.trim(), level, suggestedBy: user.uid, suggestedByName: user.name }
+    await onSubmit(payload)
+    setSaving(false)
+    setDone(true)
+    setTimeout(onClose, 1800)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#000a', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+         onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="fadeUp" style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 14, padding: 28, width: 420, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {done ? (
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>✅</div>
+            <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 16 }}>Suggestion submitted!</div>
+            <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>A manager will review it shortly.</div>
+          </div>
+        ) : (
+          <>
+            <div>
+              <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 16, marginBottom: 4 }}>
+                Suggest a {type === 'skill' ? 'Skill' : 'Certification'}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                Your suggestion will be reviewed by a manager before appearing for everyone.
+              </div>
+            </div>
+            <Input label={type === 'skill' ? 'Skill Name' : 'Certification Name'} value={name} onChange={setName}
+              placeholder={type === 'skill' ? 'e.g. Terraform Cloud' : 'e.g. AWS Solutions Architect'} />
+            {type === 'skill' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em', fontFamily: 'Space Grotesk, sans-serif' }}>Domain</label>
+                <select value={domain} onChange={e => setDomain(e.target.value)} style={{
+                  padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)',
+                  background: 'var(--panel2)', color: 'var(--ink)', fontSize: 14, fontFamily: 'Inter, sans-serif',
+                }}>
+                  {allDomains.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+            )}
+            {type === 'cert' && (
+              <>
+                <Input label="Provider" value={provider} onChange={setProvider} placeholder="e.g. Amazon, Microsoft, Google" />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em', fontFamily: 'Space Grotesk, sans-serif' }}>Level</label>
+                  <select value={level} onChange={e => setLevel(e.target.value)} style={{
+                    padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)',
+                    background: 'var(--panel2)', color: 'var(--ink)', fontSize: 14, fontFamily: 'Inter, sans-serif',
+                  }}>
+                    {['Foundational','Associate','Professional','Specialty','Expert'].map(l => <option key={l}>{l}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <Btn variant="secondary" small onClick={onClose}>Cancel</Btn>
+              <Btn small onClick={handleSubmit} disabled={saving || !name.trim()}>
+                {saving ? 'Submitting…' : 'Submit suggestion'}
+              </Btn>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function MemberSkills({ user, categories, assessments, setAssessment }) {
   const myA = assessments[user.uid] || {}
+  const [modal, setModal] = useState(null) // { domainId, domainName } | null
 
   const setSkill = useCallback((skillId, field, val) => {
     const current = myA[skillId] || { prof: 0, interest: 'Low' }
-    setAssessment(user.uid, skillId, { ...current, [field]: val })
+    setAssessment(user.uid, skillId, { ...current, [field]: val, updatedAt: Date.now() })
   }, [user.uid, myA, setAssessment])
 
   const filled = Object.values(myA).filter(a => a.prof > 0).length
   const total  = categories.reduce((s, c) => s + c.skills.length, 0)
 
+  const handleSuggest = async (payload) => {
+    await submitSuggestion(payload)
+  }
+
   return (
     <div className="fadeUp" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {modal && (
+        <SuggestModal type="skill" domainId={modal.domainId} domainName={modal.domainName}
+          allDomains={categories} user={user} onClose={() => setModal(null)} onSubmit={handleSuggest} />
+      )}
+
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800 }}>My Skills</h1>
           <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Rate your proficiency and growth interest for each skill.</p>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 28, fontWeight: 800, fontFamily: 'Syne, sans-serif', background: 'var(--grad)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+          <div style={{ fontSize: 28, fontWeight: 800, fontFamily: 'Space Grotesk, sans-serif', background: 'var(--grad)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             {filled}/{total}
           </div>
           <div style={{ fontSize: 12, color: 'var(--muted)' }}>skills assessed</div>
@@ -620,6 +707,11 @@ function MemberSkills({ user, categories, assessments, setAssessment }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <div style={{ width: 10, height: 10, borderRadius: 3, background: cat.color }} />
             <h3 style={{ fontSize: 15, fontWeight: 700 }}>{cat.name}</h3>
+            <button onClick={() => setModal({ domainId: cat.id, domainName: cat.name })} style={{
+              marginLeft: 'auto', fontSize: 12, color: 'var(--accent)', background: 'none',
+              border: '1px solid var(--accent)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer',
+              fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600,
+            }}>+ Suggest skill</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
             {cat.skills.map(sk => {
@@ -684,15 +776,28 @@ function MemberCerts({ user, certs, userCerts, setUserCerts }) {
   }
 
   const statusColors = {
-    Earned:  { bg: '#d1fae5', text: '#065f46' },
-    Planned: { bg: '#dbeafe', text: '#1d4ed8' },
+    Earned:  { bg: '#0a1f18', text: '#00d084' },
+    Planned: { bg: '#0d1a2e', text: '#4a90d9' },
   }
+
+  const [showCertModal, setShowCertModal] = useState(false)
+  const handleSuggestCert = async (payload) => { await submitSuggestion(payload) }
 
   return (
     <div className="fadeUp" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div>
-        <h1 style={{ fontSize: 26, fontWeight: 800 }}>My Certifications</h1>
-        <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Mark certifications you've earned or are working toward.</p>
+      {showCertModal && (
+        <SuggestModal type="cert" user={user} allDomains={[]} onClose={() => setShowCertModal(false)} onSubmit={handleSuggestCert} />
+      )}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+        <div>
+          <h1 style={{ fontSize: 26, fontWeight: 800 }}>My Certifications</h1>
+          <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Mark certifications you've earned or are working toward.</p>
+        </div>
+        <button onClick={() => setShowCertModal(true)} style={{
+          fontSize: 13, color: 'var(--accent)', background: 'none',
+          border: '1px solid var(--accent)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer',
+          fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600,
+        }}>+ Suggest certification</button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
         {certs.map(cert => {
@@ -721,18 +826,23 @@ function MemberCerts({ user, certs, userCerts, setUserCerts }) {
 // ─── Manager App ──────────────────────────────────────────────────────────────
 function ManagerApp(ctx) {
   const [tab, setTab] = useState('heatmap')
+  const pendingCount = (ctx.suggestions || []).filter(s => s.status === 'pending').length
   const nav = [
-    { key: 'heatmap', icon: '🔥', label: 'Skills Heatmap' },
-    { key: 'certs',   icon: '🏅', label: 'Certifications' },
-    { key: 'domains', icon: '🗂',  label: 'By Domain' },
-    { key: 'admin',   icon: '⚙️',  label: 'Admin' },
+    { key: 'heatmap',     icon: '🔥', label: 'Skills Heatmap' },
+    { key: 'certs',       icon: '🏅', label: 'Certifications' },
+    { key: 'domains',     icon: '🗂',  label: 'By Domain' },
+    { key: 'people',      icon: '👥', label: 'People' },
+    { key: 'suggestions', icon: '💡', label: `Suggestions${pendingCount > 0 ? ` (${pendingCount})` : ''}` },
+    { key: 'admin',       icon: '⚙️',  label: 'Admin' },
   ]
   return (
     <Shell user={ctx.user} onLogout={ctx.onLogout} nav={nav} activeTab={tab} setActiveTab={setTab}>
-      {tab === 'heatmap' && <Heatmap {...ctx} />}
-      {tab === 'certs'   && <CertTracker {...ctx} />}
-      {tab === 'domains' && <DomainView {...ctx} />}
-      {tab === 'admin'   && <AdminPanel {...ctx} />}
+      {tab === 'heatmap'     && <Heatmap {...ctx} />}
+      {tab === 'certs'       && <CertTracker {...ctx} />}
+      {tab === 'domains'     && <DomainView {...ctx} />}
+      {tab === 'people'      && <PeoplePanel {...ctx} />}
+      {tab === 'suggestions' && <SuggestionsPanel {...ctx} />}
+      {tab === 'admin'       && <AdminPanel {...ctx} />}
     </Shell>
   )
 }
@@ -742,9 +852,13 @@ function Heatmap({ assessments, categories }) {
   const memberIds = Object.keys(assessments)
   const profColor = v => ['#1e1e2a','#0d1a2e','#0a1f18','#1f1a00','#2a0a1a'][v] || '#1e1e2a'
 
-  const totalAssessed = Object.values(assessments).reduce((s, u) => s + Object.values(u).filter(a => a.prof > 0).length, 0)
-  const allVals = Object.values(assessments).flatMap(u => Object.values(u).map(a => a.prof)).filter(v => v > 0)
-  const avgProf = allVals.length ? (allVals.reduce((s, v) => s + v, 0) / allVals.length).toFixed(1) : '—'
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const recentlyUpdated = Object.values(assessments).filter(u =>
+    Object.values(u).some(a => a.updatedAt && a.updatedAt > sevenDaysAgo)
+  ).length
+  const memberCount = memberIds.length
+  const totalRated = Object.values(assessments).reduce((s, u) => s + Object.values(u).filter(a => a.prof > 0).length, 0)
+  const avgSkillsPerUser = memberCount > 0 ? (totalRated / memberCount).toFixed(1) : '—'
 
   return (
     <div className="fadeUp" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -755,15 +869,31 @@ function Heatmap({ assessments, categories }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         {[
-          { label: 'Team Members', val: memberIds.length, icon: '👥' },
-          { label: 'Skills Tracked',    val: categories.reduce((s, c) => s + c.skills.length, 0), icon: '🧠' },
-          { label: 'Assessments Done',  val: totalAssessed, icon: '✅' },
-          { label: 'Avg Proficiency',   val: avgProf, icon: '📈' },
+          {
+            label: 'Team Members', val: memberIds.length, color: '#0ea5e9',
+            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+          },
+          {
+            label: 'Skills Tracked', val: categories.reduce((s, c) => s + c.skills.length, 0), color: '#a855f7',
+            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>,
+          },
+          {
+            label: 'Updated Last 7 Days', val: recentlyUpdated, color: '#00d084',
+            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+          },
+          {
+            label: 'Avg Skills / Member', val: avgSkillsPerUser, color: '#e00080',
+            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>,
+          },
         ].map(c => (
-          <Card key={c.label} style={{ textAlign: 'center', padding: '16px 12px' }}>
-            <div style={{ fontSize: 24 }}>{c.icon}</div>
-            <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 28, marginTop: 4 }}>{c.val}</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{c.label}</div>
+          <Card key={c.label} style={{ padding: '20px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: c.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', color: c.color }}>
+                {c.icon}
+              </div>
+            </div>
+            <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 800, fontSize: 30, lineHeight: 1, color: 'var(--ink)' }}>{c.val}</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6, fontWeight: 500 }}>{c.label}</div>
           </Card>
         ))}
       </div>
@@ -934,6 +1064,425 @@ function DomainView({ assessments, categories }) {
             </tbody>
           </table>
         </Card>
+      )}
+    </div>
+  )
+}
+
+// ─── People Panel ────────────────────────────────────────────────────────────
+const ROLES = [
+  { val: 'manager',     label: 'Practice Manager',     color: '#e00080' },
+  { val: 'lead',        label: 'Practice Lead',        color: '#7c3aed' },
+  { val: 'contributor', label: 'Practice Contributor', color: '#0ea5e9' },
+]
+
+function RoleBadge({ role }) {
+  const r = ROLES.find(r => r.val === role) || ROLES[2]
+  return (
+    <span style={{
+      fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 99,
+      background: r.color + '22', color: r.color,
+      fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '.03em', whiteSpace: 'nowrap',
+    }}>{r.label}</span>
+  )
+}
+
+function UserProfileModal({ person, assessments, userCerts, categories, certs, onClose }) {
+  const myA  = assessments[person.id] || {}
+  const myC  = userCerts[person.id]   || []
+
+  // Only rated skills (prof > 0)
+  const ratedSkills = categories.flatMap(cat =>
+    cat.skills
+      .filter(sk => myA[sk.id] && myA[sk.id].prof > 0)
+      .map(sk => ({ ...sk, catName: cat.name, catColor: cat.color, ...myA[sk.id] }))
+  )
+
+  // High-interest skills (growth intentions)
+  const growthSkills = categories.flatMap(cat =>
+    cat.skills
+      .filter(sk => myA[sk.id] && myA[sk.id].interest === 'High')
+      .map(sk => ({ ...sk, catName: cat.name, catColor: cat.color, ...myA[sk.id] }))
+  )
+
+  const earnedCerts  = myC.filter(c => c.status === 'Earned')
+  const plannedCerts = myC.filter(c => c.status === 'Planned')
+  const certById     = Object.fromEntries(certs.map(c => [c.id, c]))
+
+  const profLabel = v => ['N/A','Awareness','Working','Advanced','Expert'][v] || 'N/A'
+  const profColor = v => ['#4a4a60','#4a90d9','#00c87a','#ffc400','#ff4da6'][v] || '#4a4a60'
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'#000c', zIndex:999, display:'flex', alignItems:'center', justifyContent:'center', padding: 20 }}
+         onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="fadeUp" style={{
+        background:'var(--panel)', border:'1px solid var(--border)', borderRadius:16,
+        width:'100%', maxWidth:700, maxHeight:'85vh', display:'flex', flexDirection:'column', overflow:'hidden',
+      }}>
+        {/* Header */}
+        <div style={{ padding:'24px 28px 20px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:16 }}>
+          <Avatar name={person.name} size={48} />
+          <div style={{ flex:1 }}>
+            <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:18 }}>{person.name}</div>
+            <div style={{ fontSize:13, color:'var(--muted)', marginTop:3 }}>{person.email} · {person.team}</div>
+            <div style={{ marginTop:6 }}><RoleBadge role={person.role} /></div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:'var(--muted)', fontSize:22, cursor:'pointer', padding:4 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ overflowY:'auto', padding:'24px 28px', display:'flex', flexDirection:'column', gap:28 }}>
+
+          {/* Current Skills */}
+          <div>
+            <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:13, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:12 }}>
+              Skills Assessed ({ratedSkills.length})
+            </div>
+            {ratedSkills.length === 0
+              ? <div style={{ color:'var(--muted)', fontSize:13 }}>No skills rated yet.</div>
+              : <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                  {ratedSkills.map(sk => (
+                    <div key={sk.id} style={{
+                      display:'flex', alignItems:'center', gap:8, padding:'6px 12px',
+                      background:'var(--panel2)', borderRadius:8, border:'1px solid var(--border)',
+                    }}>
+                      <span style={{ width:8, height:8, borderRadius:'50%', background:sk.catColor, flexShrink:0 }} />
+                      <span style={{ fontSize:13, fontWeight:500 }}>{sk.name}</span>
+                      <span style={{ fontSize:11, fontWeight:700, color:profColor(sk.prof), background:profColor(sk.prof)+'22', padding:'2px 7px', borderRadius:99 }}>
+                        {sk.prof} · {profLabel(sk.prof)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+
+          {/* Certifications */}
+          <div>
+            <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:13, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:12 }}>
+              Certifications Earned ({earnedCerts.length})
+            </div>
+            {earnedCerts.length === 0
+              ? <div style={{ color:'var(--muted)', fontSize:13 }}>None recorded yet.</div>
+              : <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                  {earnedCerts.map(c => {
+                    const cert = certById[c.certId]
+                    if (!cert) return null
+                    return (
+                      <div key={c.certId} style={{ padding:'6px 12px', background:'#0a1f18', border:'1px solid #00d08433', borderRadius:8, fontSize:13, color:'#00d084', fontWeight:500 }}>
+                        🏅 {cert.name}
+                      </div>
+                    )
+                  })}
+                </div>
+            }
+          </div>
+
+          {/* Growth Intentions */}
+          <div>
+            <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:13, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:12 }}>
+              Intends to Learn / Grow ({growthSkills.length + plannedCerts.length})
+            </div>
+            {growthSkills.length === 0 && plannedCerts.length === 0
+              ? <div style={{ color:'var(--muted)', fontSize:13 }}>No growth intentions recorded.</div>
+              : <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                  {growthSkills.map(sk => (
+                    <div key={sk.id} style={{ padding:'6px 12px', background:'#1f1a00', border:'1px solid #ffc40033', borderRadius:8, fontSize:13, color:'#ffc400', fontWeight:500 }}>
+                      ⭐ {sk.name} <span style={{ opacity:.6 }}>({sk.catName})</span>
+                    </div>
+                  ))}
+                  {plannedCerts.map(c => {
+                    const cert = certById[c.certId]
+                    if (!cert) return null
+                    return (
+                      <div key={c.certId} style={{ padding:'6px 12px', background:'#0d1a2e', border:'1px solid #4a90d933', borderRadius:8, fontSize:13, color:'#4a90d9', fontWeight:500 }}>
+                        📋 {cert.name}
+                      </div>
+                    )
+                  })}
+                </div>
+            }
+          </div>
+
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user: currentUser }) {
+  const [search,    setSearch]    = useState('')
+  const [selected,  setSelected]  = useState(null)
+  const [editing,   setEditing]   = useState(null)  // uid being edited
+  const [editRole,  setEditRole]  = useState('')
+  const [editTeam,  setEditTeam]  = useState('')
+  const [saving,    setSaving]    = useState(false)
+
+  const canEdit = ['manager'].includes(currentUser.role)
+
+  const filtered = allUsers.filter(u =>
+    u.name?.toLowerCase().includes(search.toLowerCase()) ||
+    u.email?.toLowerCase().includes(search.toLowerCase()) ||
+    u.team?.toLowerCase().includes(search.toLowerCase())
+  )
+
+  // Group by practice/team
+  const grouped = filtered.reduce((acc, u) => {
+    const t = u.team || 'Unassigned'
+    if (!acc[t]) acc[t] = []
+    acc[t].push(u)
+    return acc
+  }, {})
+
+  const practices = Object.keys(grouped).sort()
+
+  const startEdit = (u) => {
+    setEditing(u.id)
+    setEditRole(u.role || 'contributor')
+    setEditTeam(u.team || '')
+  }
+
+  const saveEdit = async (uid) => {
+    setSaving(true)
+    await updateUserProfile(uid, { role: editRole, team: editTeam })
+    setSaving(false)
+    setEditing(null)
+  }
+
+  // All unique teams for the move-to dropdown
+  const allTeams = [...new Set(allUsers.map(u => u.team).filter(Boolean))].sort()
+
+  return (
+    <div className="fadeUp" style={{ display:'flex', flexDirection:'column', gap:24 }}>
+      {selected && (
+        <UserProfileModal
+          person={selected}
+          assessments={assessments}
+          userCerts={userCerts}
+          categories={categories}
+          certs={certs}
+          onClose={() => setSelected(null)}
+        />
+      )}
+
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:16 }}>
+        <div>
+          <h1 style={{ fontSize:26, fontWeight:800 }}>People</h1>
+          <p style={{ color:'var(--muted)', fontSize:14, marginTop:4 }}>
+            {allUsers.length} members across {practices.length} practices
+          </p>
+        </div>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, email or practice…"
+          style={{
+            padding:'9px 14px', borderRadius:9, border:'1px solid var(--border)',
+            background:'var(--panel2)', color:'var(--ink)', fontSize:13,
+            fontFamily:'Inter, sans-serif', width:300, outline:'none',
+          }}
+          onFocus={e => e.target.style.borderColor='var(--accent)'}
+          onBlur={e => e.target.style.borderColor='var(--border)'}
+        />
+      </div>
+
+      {/* Grouped by practice */}
+      {practices.map(practice => (
+        <div key={practice}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+            <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:14, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em' }}>
+              {practice}
+            </div>
+            <div style={{ fontSize:12, color:'var(--muted)', background:'var(--panel2)', padding:'2px 8px', borderRadius:99, border:'1px solid var(--border)' }}>
+              {grouped[practice].length}
+            </div>
+          </div>
+
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {grouped[practice].map(person => (
+              <Card key={person.id} style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 18px' }}>
+                <Avatar name={person.name || '?'} size={38} style={{ cursor:'pointer' }} />
+
+                {/* Name + email */}
+                <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={() => setSelected(person)}>
+                  <div style={{ fontWeight:600, fontSize:14, fontFamily:'Space Grotesk, sans-serif', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                    {person.name}
+                  </div>
+                  <div style={{ fontSize:12, color:'var(--muted)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                    {person.email}
+                  </div>
+                </div>
+
+                {/* Role + team — inline edit if editing this person */}
+                {editing === person.id ? (
+                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                    <select value={editRole} onChange={e => setEditRole(e.target.value)} style={{
+                      padding:'6px 10px', borderRadius:7, border:'1px solid var(--accent)',
+                      background:'var(--panel2)', color:'var(--ink)', fontSize:12, fontFamily:'Space Grotesk, sans-serif',
+                    }}>
+                      {ROLES.map(r => <option key={r.val} value={r.val}>{r.label}</option>)}
+                    </select>
+                    <select value={editTeam} onChange={e => setEditTeam(e.target.value)} style={{
+                      padding:'6px 10px', borderRadius:7, border:'1px solid var(--accent)',
+                      background:'var(--panel2)', color:'var(--ink)', fontSize:12, fontFamily:'Space Grotesk, sans-serif',
+                    }}>
+                      {allTeams.map(t => <option key={t}>{t}</option>)}
+                    </select>
+                    <Btn small onClick={() => saveEdit(person.id)} disabled={saving}>
+                      {saving ? '…' : '✓ Save'}
+                    </Btn>
+                    <Btn small variant="secondary" onClick={() => setEditing(null)}>Cancel</Btn>
+                  </div>
+                ) : (
+                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <RoleBadge role={person.role} />
+                    {canEdit && (
+                      <button onClick={() => startEdit(person)} style={{
+                        background:'none', border:'1px solid var(--border)', borderRadius:7,
+                        padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--muted)',
+                        fontFamily:'Space Grotesk, sans-serif', transition:'all .15s',
+                      }}
+                      onMouseEnter={e => { e.target.style.borderColor='var(--accent)'; e.target.style.color='var(--accent)' }}
+                      onMouseLeave={e => { e.target.style.borderColor='var(--border)'; e.target.style.color='var(--muted)' }}
+                      >Edit</button>
+                    )}
+                    <button onClick={() => setSelected(person)} style={{
+                      background:'none', border:'1px solid var(--border)', borderRadius:7,
+                      padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--muted)',
+                      fontFamily:'Space Grotesk, sans-serif', transition:'all .15s',
+                    }}
+                    onMouseEnter={e => { e.target.style.borderColor='var(--accent)'; e.target.style.color='var(--accent)' }}
+                    onMouseLeave={e => { e.target.style.borderColor='var(--border)'; e.target.style.color='var(--muted)' }}
+                    >View profile</button>
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {filtered.length === 0 && (
+        <div style={{ textAlign:'center', padding:48, color:'var(--muted)' }}>
+          No people match your search.
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Suggestions Panel (Manager) ─────────────────────────────────────────────
+function SuggestionsPanel({ suggestions = [], categories, setCategories, certs, setCerts }) {
+  const [busy, setBusy] = useState({})
+
+  const pending  = suggestions.filter(s => s.status === 'pending')
+  const resolved = suggestions.filter(s => s.status !== 'pending')
+
+  const handleApprove = async (s) => {
+    setBusy(b => ({ ...b, [s.id]: true }))
+    await approveSuggestion(s.id)
+
+    if (s.type === 'skill') {
+      // Add skill to the right domain in categories
+      const newSkillId = 'sk_' + Date.now()
+      const updated = categories.map(cat =>
+        cat.id === s.domainId
+          ? { ...cat, skills: [...cat.skills, { id: newSkillId, name: s.skillName }] }
+          : cat
+      )
+      setCategories(updated)
+    } else if (s.type === 'cert') {
+      const newCert = { id: 'c_' + Date.now(), name: s.certName, provider: s.provider || '', level: s.level || '' }
+      setCerts([...certs, newCert])
+    }
+    setBusy(b => ({ ...b, [s.id]: false }))
+  }
+
+  const handleReject = async (s) => {
+    setBusy(b => ({ ...b, [s.id]: true }))
+    await rejectSuggestion(s.id)
+    setBusy(b => ({ ...b, [s.id]: false }))
+  }
+
+  const statusBadge = (status) => {
+    const map = {
+      pending:  { label: 'Pending',  bg: '#1f1a00', color: '#ffb800' },
+      approved: { label: 'Approved', bg: '#0a1f18', color: '#00d084' },
+      rejected: { label: 'Rejected', bg: '#2a0a0a', color: '#ff4444' },
+    }
+    const s = map[status] || map.pending
+    return <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 99, background: s.bg, color: s.color, fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '.04em' }}>{s.label}</span>
+  }
+
+  return (
+    <div className="fadeUp" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div>
+        <h1 style={{ fontSize: 26, fontWeight: 800 }}>Suggestions</h1>
+        <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Review skill and certification suggestions from your team.</p>
+      </div>
+
+      {/* Pending */}
+      <div>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12 }}>
+          Pending Review ({pending.length})
+        </h3>
+        {pending.length === 0 ? (
+          <Card style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>🎉</div>
+            <div style={{ fontSize: 14 }}>No pending suggestions — all caught up!</div>
+          </Card>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {pending.map(s => (
+              <Card key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px' }}>
+                <div style={{ fontSize: 22 }}>{s.type === 'skill' ? '🔧' : '🏅'}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>
+                    {s.type === 'skill' ? s.skillName : s.certName}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                    {s.type === 'skill'
+                      ? `Skill · Domain: ${s.domainName}`
+                      : `Certification · ${s.provider || ''}${s.level ? ` · ${s.level}` : ''}`}
+                    {' · '}Suggested by <strong style={{ color: 'var(--ink)' }}>{s.suggestedByName}</strong>
+                    {' · '}{new Date(s.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
+                {statusBadge(s.status)}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Btn small onClick={() => handleApprove(s)} disabled={busy[s.id]}
+                    style={{ background: '#0a1f18', color: '#00d084', border: '1px solid #00d08444' }}>
+                    ✓ Approve
+                  </Btn>
+                  <Btn small variant="danger" onClick={() => handleReject(s)} disabled={busy[s.id]}>
+                    ✕ Reject
+                  </Btn>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Resolved */}
+      {resolved.length > 0 && (
+        <div>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12 }}>
+            Previously Resolved ({resolved.length})
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {resolved.map(s => (
+              <Card key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 20px', opacity: 0.7 }}>
+                <div style={{ fontSize: 18 }}>{s.type === 'skill' ? '🔧' : '🏅'}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{s.type === 'skill' ? s.skillName : s.certName}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>by {s.suggestedByName}</div>
+                </div>
+                {statusBadge(s.status)}
+              </Card>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )
