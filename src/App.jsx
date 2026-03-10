@@ -948,28 +948,61 @@ function ManagerApp(ctx) {
 }
 
 function Heatmap({ assessments, categories, allUsers }) {
-  // In the real app, users come from Firestore. Here we derive from assessment keys.
   const memberIds = Object.keys(assessments)
-  const profColor = v => ['#1e1e2a','#0d1a2e','#0a1f18','#1f1a00','#2a0a1a'][v] || '#1e1e2a'
   const profTextColor = v => ['#4a4a60','#4a90d9','#00c87a','#ffc400','#ff4da6'][v] || '#4a4a60'
-  const profLabel = v => ['N/A','Awareness','Working','Advanced','Expert'][v] || 'N/A'
+  const profBg       = v => ['#1e1e2a','#0d1a2e11','#0a1f1811','#1f1a0011','#2a0a1a11'][v] || '#1e1e2a'
+  const profLabel    = v => ['N/A','Awareness','Working','Advanced','Expert'][v] || 'N/A'
+
   const [drillSkill, setDrillSkill] = useState(null)
+  const [filterPractice, setFilterPractice] = useState('all')
   const userById = Object.fromEntries((allUsers||[]).map(u => [u.id, u]))
+
+  // Filter memberIds by practice if selected
+  const visibleIds = filterPractice === 'all'
+    ? memberIds
+    : memberIds.filter(uid => userById[uid]?.team === filterPractice)
+
+  // For a skill, count how many visible members are at each proficiency level
+  const levelCounts = (skillId) => {
+    const counts = [0, 0, 0, 0, 0] // index = prof level 0-4
+    visibleIds.forEach(uid => {
+      const p = assessments[uid]?.[skillId]?.prof || 0
+      counts[p]++
+    })
+    return counts
+  }
+
+  const avgProf = (skillId) => {
+    const vals = visibleIds.map(uid => assessments[uid]?.[skillId]?.prof || 0).filter(v => v > 0)
+    return vals.length ? (vals.reduce((s, v) => s + v, 0) / vals.length) : 0
+  }
+
+  const coverage = (skillId) => {
+    const rated = visibleIds.filter(uid => (assessments[uid]?.[skillId]?.prof || 0) > 0).length
+    return visibleIds.length > 0 ? Math.round((rated / visibleIds.length) * 100) : 0
+  }
+
   const getDrillData = (skillId) =>
-    memberIds
+    visibleIds
       .map(uid => ({ uid, prof: assessments[uid]?.[skillId]?.prof || 0, user: userById[uid] }))
       .filter(d => d.prof > 0)
-      .sort((a,b) => b.prof - a.prof)
+      .sort((a, b) => b.prof - a.prof)
 
   const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
   const recentlyUpdated = Object.values(assessments).filter(u =>
     Object.values(u).some(a => a.updatedAt && a.updatedAt > sevenDaysAgo)
   ).length
-  const memberCount = memberIds.length
   const totalRated = Object.values(assessments).reduce((s, u) => s + Object.values(u).filter(a => a.prof > 0).length, 0)
-  const avgSkillsPerUser = memberCount > 0 ? (totalRated / memberCount).toFixed(1) : '—'
+  const avgSkillsPerUser = memberIds.length > 0 ? (totalRated / memberIds.length).toFixed(1) : '—'
 
   const drillData = drillSkill ? getDrillData(drillSkill.id) : []
+
+  const PROF_COLS = [
+    { val: 1, label: 'Awareness', color: '#4a90d9', bg: '#0d1a2e' },
+    { val: 2, label: 'Working',   color: '#00c87a', bg: '#0a1f18' },
+    { val: 3, label: 'Advanced',  color: '#ffc400', bg: '#1f1a00' },
+    { val: 4, label: 'Expert',    color: '#ff4da6', bg: '#2a0a1a' },
+  ]
 
   return (
     <div className="fadeUp" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -983,7 +1016,7 @@ function Heatmap({ assessments, categories, allUsers }) {
                 <div style={{ width:10, height:10, borderRadius:3, background:drillSkill.catColor, flexShrink:0 }} />
                 <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:16 }}>{drillSkill.name}</div>
               </div>
-              <div style={{ fontSize:12, color:'var(--muted)' }}>{drillData.length} {drillData.length===1?'person has':'people have'} this skill</div>
+              <div style={{ fontSize:12, color:'var(--muted)' }}>{drillData.length} {drillData.length===1?'person has':'people have'} this skill{filterPractice !== 'all' ? ` in ${filterPractice}` : ''}</div>
             </div>
             <button onClick={()=>setDrillSkill(null)} style={{ background:'none', border:'none', color:'var(--muted)', fontSize:20, cursor:'pointer', padding:4 }}>✕</button>
           </div>
@@ -998,7 +1031,7 @@ function Heatmap({ assessments, categories, allUsers }) {
                     <div style={{ fontSize:11, color:'var(--muted)' }}>{d.user?.team || ''}</div>
                   </div>
                   <span style={{ fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:99, background:profTextColor(d.prof)+'22', color:profTextColor(d.prof), whiteSpace:'nowrap' }}>
-                    {d.prof} · {profLabel(d.prof)}
+                    {profLabel(d.prof)}
                   </span>
                 </div>
               ))
@@ -1007,91 +1040,133 @@ function Heatmap({ assessments, categories, allUsers }) {
         </div>
       )}
 
-      <div>
-        <h1 style={{ fontSize: 26, fontWeight: 800 }}>Skills Heatmap</h1>
-        <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Team proficiency at a glance. <span style={{ color:'var(--accent)' }}>Click any skill name to see who has it →</span></p>
+      {/* Header + practice filter */}
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
+        <div>
+          <h1 style={{ fontSize: 26, fontWeight: 800 }}>Skills Heatmap</h1>
+          <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Proficiency distribution across the team. <span style={{ color:'var(--accent)' }}>Click any skill to see who has it →</span></p>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ fontSize:12, color:'var(--muted)', fontWeight:600 }}>Filter by practice:</span>
+          <select value={filterPractice} onChange={e => setFilterPractice(e.target.value)}
+            style={{ padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', fontSize:13, minWidth:200 }}>
+            <option value="all">All Practices ({memberIds.length} people)</option>
+            {PRACTICES.map(p => {
+              const count = memberIds.filter(uid => userById[uid]?.team === p).length
+              return count > 0 ? <option key={p} value={p}>{p} ({count})</option> : null
+            })}
+          </select>
+        </div>
       </div>
 
+      {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         {[
-          {
-            label: 'Team Members', val: memberIds.length, color: '#0ea5e9',
-            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
-          },
-          {
-            label: 'Skills Tracked', val: categories.reduce((s, c) => s + c.skills.length, 0), color: '#a855f7',
-            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>,
-          },
-          {
-            label: 'Updated Last 7 Days', val: recentlyUpdated, color: '#00d084',
-            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
-          },
-          {
-            label: 'Avg Skills / Member', val: avgSkillsPerUser, color: '#e00080',
-            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>,
-          },
+          { label: 'Team Members', val: visibleIds.length, color: '#0ea5e9',
+            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+          { label: 'Skills Tracked', val: categories.reduce((s, c) => s + c.skills.length, 0), color: '#a855f7',
+            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> },
+          { label: 'Updated Last 7 Days', val: recentlyUpdated, color: '#00d084',
+            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
+          { label: 'Avg Skills / Member', val: avgSkillsPerUser, color: '#e00080',
+            icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> },
         ].map(c => (
           <Card key={c.label} style={{ padding: '20px 16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: c.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', color: c.color }}>
-                {c.icon}
-              </div>
-            </div>
-            <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 800, fontSize: 30, lineHeight: 1, color: 'var(--ink)' }}>{c.val}</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6, fontWeight: 500 }}>{c.label}</div>
+            <div style={{ width:40, height:40, borderRadius:10, background:c.color+'18', display:'flex', alignItems:'center', justifyContent:'center', color:c.color, marginBottom:12 }}>{c.icon}</div>
+            <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:800, fontSize:30, lineHeight:1 }}>{c.val}</div>
+            <div style={{ fontSize:12, color:'var(--muted)', marginTop:6, fontWeight:500 }}>{c.label}</div>
           </Card>
         ))}
       </div>
 
+      {/* Matrix table — rows=skills, cols=proficiency levels */}
       <Card style={{ padding: 0, overflow: 'auto' }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: '1.5px solid var(--border)' }}>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, color: 'var(--muted)', position: 'sticky', left: 0, background: 'var(--panel)', zIndex: 2 }}>Skill</th>
-              {memberIds.map(uid => (
-                <th key={uid} style={{ padding: '12px 10px', minWidth: 80, textAlign: 'center', fontSize: 11, color: 'var(--muted)' }}>{uid.slice(0, 8)}…</th>
+              <th style={{ padding:'12px 16px', textAlign:'left', fontSize:12, color:'var(--muted)', position:'sticky', left:0, background:'var(--panel)', zIndex:2, minWidth:200 }}>Skill</th>
+              {PROF_COLS.map(p => (
+                <th key={p.val} style={{ padding:'12px 20px', textAlign:'center', fontSize:12, fontWeight:700, color:p.color, minWidth:110, whiteSpace:'nowrap' }}>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+                    <span style={{ fontSize:18, fontWeight:800 }}>{p.val}</span>
+                    <span style={{ fontSize:11, fontWeight:600, opacity:.8 }}>{p.label}</span>
+                  </div>
+                </th>
               ))}
+              <th style={{ padding:'12px 16px', textAlign:'center', fontSize:12, color:'var(--muted)', minWidth:80 }}>Avg</th>
+              <th style={{ padding:'12px 16px', textAlign:'center', fontSize:12, color:'var(--muted)', minWidth:90 }}>Coverage</th>
             </tr>
           </thead>
           <tbody>
             {categories.map(cat => (
               <>
                 <tr key={cat.id + '_h'}>
-                  <td colSpan={memberIds.length + 1} style={{ padding: '10px 16px', background: cat.color + '18', fontWeight: 700, fontSize: 11, color: cat.color, textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                  <td colSpan={7} style={{ padding:'10px 16px', background:cat.color+'18', fontWeight:700, fontSize:11, color:cat.color, textTransform:'uppercase', letterSpacing:'.08em' }}>
                     {cat.name}
                   </td>
                 </tr>
-                {cat.skills.map(sk => (
-                  <tr key={sk.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td onClick={() => setDrillSkill({ id: sk.id, name: sk.name, catColor: cat.color })}
-                      style={{ padding: '8px 16px', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: 'var(--panel)', zIndex: 1, cursor:'pointer', color: drillSkill?.id===sk.id ? 'var(--accent)' : 'var(--ink)', transition:'color .15s' }}
-                      onMouseEnter={e=>e.currentTarget.style.color='var(--accent)'}
-                      onMouseLeave={e=>e.currentTarget.style.color=drillSkill?.id===sk.id?'var(--accent)':'var(--ink)'}
-                    >{sk.name}</td>
-                    {memberIds.map(uid => {
-                      const v = assessments[uid]?.[sk.id]?.prof || 0
-                      return (
-                        <td key={uid} style={{ textAlign: 'center', padding: '6px 10px' }}>
-                          <div style={{
-                            width: 32, height: 32, borderRadius: 8, background: profColor(v),
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            margin: '0 auto', fontWeight: 700, fontSize: 13,
-                            color: v > 0 ? PROFICIENCY[v].textColor : '#d1d5db',
-                          }}>{v > 0 ? v : '·'}</div>
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
+                {cat.skills.map(sk => {
+                  const counts  = levelCounts(sk.id)
+                  const avg     = avgProf(sk.id)
+                  const cov     = coverage(sk.id)
+                  const total   = visibleIds.length
+                  return (
+                    <tr key={sk.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                      {/* Skill name — clickable */}
+                      <td onClick={() => setDrillSkill({ id:sk.id, name:sk.name, catColor:cat.color })}
+                        style={{ padding:'10px 16px', fontWeight:500, whiteSpace:'nowrap', position:'sticky', left:0, background:'var(--panel)', zIndex:1, cursor:'pointer', color:drillSkill?.id===sk.id?'var(--accent)':'var(--ink)', transition:'color .15s' }}
+                        onMouseEnter={e=>e.currentTarget.style.color='var(--accent)'}
+                        onMouseLeave={e=>e.currentTarget.style.color=drillSkill?.id===sk.id?'var(--accent)':'var(--ink)'}>
+                        {sk.name}
+                      </td>
+
+                      {/* Level count cells */}
+                      {PROF_COLS.map(p => {
+                        const n = counts[p.val]
+                        const pct = total > 0 ? n / total : 0
+                        return (
+                          <td key={p.val} style={{ padding:'8px 12px', textAlign:'center' }}>
+                            {n > 0 ? (
+                              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                                {/* Bar */}
+                                <div style={{ width:64, height:6, borderRadius:99, background:'var(--border)', overflow:'hidden' }}>
+                                  <div style={{ width:`${pct*100}%`, height:'100%', background:p.color, borderRadius:99, transition:'width .3s' }} />
+                                </div>
+                                {/* Count */}
+                                <span style={{ fontSize:13, fontWeight:700, color:p.color }}>{n}</span>
+                              </div>
+                            ) : (
+                              <span style={{ color:'var(--border)', fontSize:16 }}>·</span>
+                            )}
+                          </td>
+                        )
+                      })}
+
+                      {/* Avg */}
+                      <td style={{ padding:'10px 16px', textAlign:'center' }}>
+                        {avg > 0
+                          ? <span style={{ fontSize:13, fontWeight:700, color:profTextColor(Math.round(avg)) }}>{avg.toFixed(1)}</span>
+                          : <span style={{ color:'var(--border)' }}>—</span>
+                        }
+                      </td>
+
+                      {/* Coverage bar */}
+                      <td style={{ padding:'10px 16px', textAlign:'center' }}>
+                        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+                          <div style={{ width:56, height:5, borderRadius:99, background:'var(--border)', overflow:'hidden' }}>
+                            <div style={{ width:`${cov}%`, height:'100%', background: cov > 66 ? '#00c87a' : cov > 33 ? '#ffc400' : '#ff4444', borderRadius:99 }} />
+                          </div>
+                          <span style={{ fontSize:11, color:'var(--muted)', fontWeight:600 }}>{cov}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </>
             ))}
           </tbody>
         </table>
       </Card>
-
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {PROFICIENCY.map(p => <Badge key={p.val} label={`${p.val} – ${p.label}`} color={p.color} textColor={p.textColor} />)}
-      </div>
     </div>
   )
 }
