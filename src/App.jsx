@@ -3,7 +3,7 @@ import {
   auth, login, register, loginWithMicrosoft, logout,
   getUserProfile, createUserProfile,
   onUsersSnapshot, updateUserProfile,
-  submitSuggestion, onSuggestionsSnapshot, approveSuggestion, rejectSuggestion,
+  submitSuggestion as fbSubmitSuggestion, onSuggestionsSnapshot, approveSuggestion, rejectSuggestion,
   saveAssessment, getAssessments, onAssessmentsSnapshot,
   saveUserCerts, getUserCerts, onUserCertsSnapshot,
   getCategories, saveCategories,
@@ -232,7 +232,7 @@ export default function App() {
   // Real-time listeners (manager gets all, member gets own)
   useEffect(() => {
     if (!profile) return
-    if (profile.role === 'manager') {
+    if (['manager', 'lead'].includes(profile.role)) {
       const unsub1 = onAssessmentsSnapshot(setAssessments)
       const unsub2 = onUserCertsSnapshot(setUserCerts)
       const unsub3 = onSuggestionsSnapshot(setSuggestions)
@@ -281,8 +281,8 @@ export default function App() {
     setCerts: handleSaveCerts,
     setAssessment: handleSetAssessment,
     setUserCerts: handleSetUserCerts,
-    suggestions, setSuggestions,
-    allUsers, setAllUsers,
+    suggestions: suggestions || [], setSuggestions,
+    allUsers: allUsers || [], setAllUsers,
     onLogout: handleLogout,
   }
 
@@ -675,7 +675,7 @@ function MemberSkills({ user, categories, assessments, setAssessment }) {
   const total  = categories.reduce((s, c) => s + c.skills.length, 0)
 
   const handleSuggest = async (payload) => {
-    await submitSuggestion(payload)
+    await fbSubmitSuggestion(payload)
   }
 
   return (
@@ -781,7 +781,7 @@ function MemberCerts({ user, certs, userCerts, setUserCerts }) {
   }
 
   const [showCertModal, setShowCertModal] = useState(false)
-  const handleSuggestCert = async (payload) => { await submitSuggestion(payload) }
+  const handleSuggestCert = async (payload) => { await fbSubmitSuggestion(payload) }
 
   return (
     <div className="fadeUp" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
