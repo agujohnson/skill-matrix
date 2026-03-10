@@ -118,6 +118,19 @@ const PROFICIENCY = [
 
 const INTEREST = ['Low', 'Medium', 'High']
 
+const PRACTICES = [
+  'AI Engineering',
+  'Cloud Engineering',
+  'Core Network Eng',
+  'Network Operations Eng',
+  'RAN Network Eng',
+  'Software Engineering',
+  'Testing Engineering',
+  'Transport Network Eng',
+  'Voice and Signaling Eng',
+]
+
+
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 const Avatar = ({ name, size = 36, style: s = {} }) => {
   const initials = name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
@@ -424,7 +437,15 @@ function Login() {
                 </div>
               </div>
 
-              <Input label="Practice / Team" value={team} onChange={setTeam} placeholder="e.g. Cloud Engineering" />
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>Practice / Team</label>
+                <select value={team} onChange={e => setTeam(e.target.value)}
+                  style={{ width:'100%', padding:'9px 12px', borderRadius:9, border:'1px solid var(--border)', background:'var(--panel2)', color: team ? 'var(--ink)' : 'var(--muted)', fontSize:13, fontFamily:'Inter, sans-serif', outline:'none' }}
+                  onFocus={e=>e.target.style.borderColor='var(--accent)'} onBlur={e=>e.target.style.borderColor='var(--border)'}>
+                  <option value="">Select your practice…</option>
+                  {PRACTICES.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
               <Input label="Password" type="password" value={pass} onChange={setPass} placeholder="Min. 6 characters" />
               <Input label="Confirm Password" type="password" value={pass2} onChange={setPass2} placeholder="Repeat password" />
 
@@ -504,12 +525,15 @@ function RoleSetup({ authUser, onComplete }) {
             </div>
 
             {/* Team/practice */}
-            <Input
-              label="Your Practice / Team"
-              value={team}
-              onChange={setTeam}
-              placeholder="e.g. Cloud Engineering, Network, Lab…"
-            />
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>Your Practice / Team</label>
+              <select value={team} onChange={e => setTeam(e.target.value)}
+                style={{ width:'100%', padding:'9px 12px', borderRadius:9, border:'1px solid var(--border)', background:'var(--panel2)', color: team ? 'var(--ink)' : 'var(--muted)', fontSize:13, fontFamily:'Inter, sans-serif', outline:'none' }}
+                onFocus={e=>e.target.style.borderColor='var(--accent)'} onBlur={e=>e.target.style.borderColor='var(--border)'}>
+                <option value="">Select your practice…</option>
+                {PRACTICES.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
 
             <Btn onClick={handleSave} disabled={!role || !team.trim() || saving} style={{ width: '100%', justifyContent: 'center' }}>
               {saving ? 'Setting up…' : 'Get started →'}
@@ -918,6 +942,8 @@ function ManagerApp(ctx) {
     { key: 'domains',     icon: <NavIcon d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />, label: 'By Domain' },
     { key: 'people',      icon: <NavIcon d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" d2="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />, label: 'People' },
     { key: 'suggestions', icon: <NavIcon d="M12 22c5.52 0 10-4.48 10-10S17.52 2 12 2 2 6.48 2 12s4.48 10 10 10zM12 8v4M12 16h.01" />, label: `Suggestions${pendingCount > 0 ? ` (${pendingCount})` : ''}` },
+    { key: 'myskills',    icon: <NavIcon d="M12 2L2 7l10 5 10-5-10-5z" d2="M2 17l10 5 10-5M2 12l10 5 10-5" />, label: 'My Skills' },
+    { key: 'mycerts',     icon: <NavIcon d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />, label: 'My Certs' },
     { key: 'admin',       icon: <NavIcon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" d2="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />, label: 'Admin' },
   ]
   return (
@@ -927,6 +953,8 @@ function ManagerApp(ctx) {
       {tab === 'domains'     && <DomainView {...ctx} />}
       {tab === 'people'      && <PeoplePanel {...ctx} />}
       {tab === 'suggestions' && <SuggestionsPanel {...ctx} />}
+      {tab === 'myskills'    && <MemberSkills {...ctx} user={{ ...ctx.user, uid: ctx.user.uid }} />}
+      {tab === 'mycerts'     && <MemberCerts  {...ctx} user={{ ...ctx.user, uid: ctx.user.uid }} />}
       {tab === 'admin'       && <AdminPanel {...ctx} />}
     </Shell>
   )
@@ -1540,7 +1568,7 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
             {ROLES.map(r => <option key={r.val} value={r.val}>{r.label}</option>)}
           </select>
           <select value={editTeam} onChange={e => setEditTeam(e.target.value)} style={{ padding:'6px 10px', borderRadius:7, border:'1px solid var(--accent)', background:'var(--panel2)', color:'var(--ink)', fontSize:12 }}>
-            {allTeams.map(t => <option key={t}>{t}</option>)}
+            {PRACTICES.map(t => <option key={t}>{t}</option>)}
           </select>
           <Btn small onClick={() => saveEdit(person.id)} disabled={saving}>{saving ? '…' : '✓'}</Btn>
           <Btn small variant="secondary" onClick={() => setEditing(null)}>Cancel</Btn>
