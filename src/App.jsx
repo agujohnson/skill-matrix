@@ -44,6 +44,9 @@ const STYLE = `
   @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
   @keyframes glow { 0%,100% { box-shadow: 0 0 20px #e0008033; } 50% { box-shadow: 0 0 40px #e0008066; } }
   .fadeUp { animation: fadeUp .4s cubic-bezier(.16,1,.3,1) both; }
+  select { color: #f0f0f5 !important; }
+  select option { background: #1a1a24 !important; color: #f0f0f5 !important; }
+  select option:disabled { color: #6b6b80 !important; }
 `
 
 // ─── Seed Data (used on first load if Firestore is empty) ─────────────────────
@@ -747,12 +750,9 @@ function MemberSkills({ user, categories, assessments, setAssessment }) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
             {cat.skills.map(sk => {
-              const a = myA[sk.id] || { prof: 0, interest: 'Low', lastYear: '' }
-              const currentYear = new Date().getFullYear()
-              const yearOpts = Array.from({ length: 6 }, (_, i) => currentYear - i)
-              const isStale = a.lastYear && Number(a.lastYear) < currentYear - 5
+              const a = myA[sk.id] || { prof: 0, interest: 'Low' }
               return (
-                <Card key={sk.id} style={{ padding: '14px 16px', border: isStale ? '1px solid #ff444433' : undefined }}>
+                <Card key={sk.id} style={{ padding: '14px 16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>{sk.name}</div>
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Proficiency</div>
@@ -768,19 +768,6 @@ function MemberSkills({ user, categories, assessments, setAssessment }) {
                       ))}
                     </div>
                   </div>
-                  {a.prof > 0 && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Last Active Year</div>
-                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                        <select value={a.lastYear || ''} onChange={e => setSkill(sk.id, 'lastYear', e.target.value)}
-                          style={{ padding:'4px 8px', borderRadius:7, border:`1px solid ${isStale ? '#ff4444' : 'var(--border)'}`, background:'var(--panel2)', color: isStale ? '#ff4444' : 'var(--ink)', fontSize:12, fontFamily:'Inter, sans-serif' }}>
-                          <option value="">Select year…</option>
-                          {yearOpts.map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
-                        {isStale && <span style={{ fontSize:11, color:'#ff4444', fontWeight:600 }}>⚠ Outside 5-year window</span>}
-                      </div>
-                    </div>
-                  )}
                   <div>
                     <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Growth Interest</div>
                     <div style={{ display: 'flex', gap: 4 }}>
