@@ -1850,7 +1850,7 @@ function SuggestionsPanel({ suggestions = [], categories, setCategories, certs, 
   )
 }
 
-function AdminPanel({ categories, setCategories, certs, setCerts }) {
+function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, assessments, userCerts, user }) {
   const [newCatName,  setNewCatName]  = useState('')
   const [newSkillName,setNewSkillName]= useState('')
   const [selCat,      setSelCat]      = useState(null)
@@ -1858,6 +1858,7 @@ function AdminPanel({ categories, setCategories, certs, setCerts }) {
   const [newCertProv, setNewCertProv] = useState('')
   const [newCertLvl,  setNewCertLvl]  = useState('')
   const [adminTab,    setAdminTab]    = useState('skills')
+  const [exporting,   setExporting]   = useState(false)
 
   const COLORS = ['#2563eb','#7c3aed','#0891b2','#059669','#d97706','#dc2626','#0d9488','#9333ea']
 
@@ -1880,22 +1881,126 @@ function AdminPanel({ categories, setCategories, certs, setCerts }) {
   }
   const deleteCert = id => setCerts(certs.filter(c => c.id !== id))
 
+  const profLabels = ['','Awareness','Working','Advanced','Expert']
+
+  const handleExport = () => {
+    if (!window.XLSX) return alert('Export library not loaded yet, please try again.')
+    setExporting(true)
+    try {
+      const XLSX = window.XLSX
+      const wb = XLSX.utils.book_new()
+      const now = new Date().toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' })
+
+      // ── Sheet 1: Skills Matrix ──────────────────────────────────────────
+      const allSkills = categories.flatMap(c => c.skills.map(s => ({ ...s, domain: c.name })))
+      const skillHeaders = ['Name', 'Practice / Team', 'Role', ...allSkills.map(s => `[${s.domain}] ${s.name}`)]
+      const skillRows = allUsers.map(u => {
+        const ua = assessments[u.id] || {}
+        return [
+          u.name || '',
+          u.team || '',
+          u.role || '',
+          ...allSkills.map(s => {
+            const prof = ua[s.id]?.prof || 0
+            return prof > 0 ? `${prof} - ${profLabels[prof]}` : ''
+          })
+        ]
+      })
+      const skillSheet = XLSX.utils.aoa_to_sheet([skillHeaders, ...skillRows])
+      // Column widths
+      skillSheet['!cols'] = [
+        { wch: 28 }, { wch: 28 }, { wch: 18 },
+        ...allSkills.map(() => ({ wch: 22 }))
+      ]
+      // Style header row bold
+      const skillRange = XLSX.utils.decode_range(skillSheet['!ref'])
+      for (let C = skillRange.s.c; C <= skillRange.e.c; C++) {
+        const cell = skillSheet[XLSX.utils.encode_cell({ r: 0, c: C })]
+        if (cell) cell.s = { font: { bold: true }, fill: { fgColor: { rgb: 'E00080' } }, font: { bold: true, color: { rgb: 'FFFFFF' } } }
+      }
+      XLSX.utils.book_append_sheet(wb, skillSheet, 'Skills Matrix')
+
+      // ── Sheet 2: Certifications Matrix ─────────────────────────────────
+      const certHeaders = ['Name', 'Practice / Team', 'Role', ...certs.map(c => `${c.name} (${c.provider})`)]
+      const certRows = allUsers.map(u => {
+        const uc = userCerts[u.id] || []
+        return [
+          u.name || '',
+          u.team || '',
+          u.role || '',
+          ...certs.map(c => {
+            const mine = uc.find(x => x.certId === c.id)
+            if (!mine) return ''
+            if (mine.status === 'Earned') {
+              const parts = ['Earned']
+              if (mine.acquiredDate) parts.push(`Acquired: ${mine.acquiredDate}`)
+              if (mine.expiryDate)   parts.push(`Expires: ${mine.expiryDate}`)
+              return parts.join(' | ')
+            }
+            if (mine.status === 'Planned') {
+              const target = mine.plannedYear && mine.plannedQuarter ? ` (${mine.plannedQuarter} ${mine.plannedYear})` : ''
+              return `Planned${target}`
+            }
+            return mine.status
+          })
+        ]
+      })
+      const certSheet = XLSX.utils.aoa_to_sheet([certHeaders, ...certRows])
+      certSheet['!cols'] = [
+        { wch: 28 }, { wch: 28 }, { wch: 18 },
+        ...certs.map(() => ({ wch: 30 }))
+      ]
+      XLSX.utils.book_append_sheet(wb, certSheet, 'Certifications Matrix')
+
+      // ── Sheet 3: People Directory ───────────────────────────────────────
+      const peopleHeaders = ['Name', 'Email', 'Practice / Team', 'Role', 'Skills Rated', 'Certs Earned', 'Certs Planned']
+      const peopleRows = allUsers.map(u => {
+        const ua = assessments[u.id] || {}
+        const uc = userCerts[u.id]   || []
+        return [
+          u.name || '',
+          u.email || '',
+          u.team || '',
+          u.role || '',
+          Object.values(ua).filter(a => a.prof > 0).length,
+          uc.filter(c => c.status === 'Earned').length,
+          uc.filter(c => c.status === 'Planned').length,
+        ]
+      })
+      const peopleSheet = XLSX.utils.aoa_to_sheet([peopleHeaders, ...peopleRows])
+      peopleSheet['!cols'] = [{ wch:28 },{ wch:32 },{ wch:28 },{ wch:18 },{ wch:14 },{ wch:14 },{ wch:14 }]
+      XLSX.utils.book_append_sheet(wb, peopleSheet, 'People Directory')
+
+      // ── Download ────────────────────────────────────────────────────────
+      const filename = `Reailize_SkillMatrix_${now.replace(/\s/g,'_').replace(/,/g,'')}.xlsx`
+      XLSX.writeFile(wb, filename)
+    } catch(e) {
+      console.error(e)
+      alert('Export failed: ' + e.message)
+    }
+    setExporting(false)
+  }
+
   const tabStyle = t => ({
     padding: '7px 16px', borderRadius: 7, border: 'none', cursor: 'pointer',
-    fontFamily: 'DM Sans, sans-serif', fontWeight: 500, fontSize: 13,
-    background: adminTab === t ? '#eff6ff' : 'transparent',
+    fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600, fontSize: 13,
+    background: adminTab === t ? '#e0008018' : 'transparent',
     color: adminTab === t ? 'var(--accent)' : 'var(--muted)',
+    borderBottom: adminTab === t ? '2px solid var(--accent)' : '2px solid transparent',
   })
 
   return (
     <div className="fadeUp" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div>
         <h1 style={{ fontSize: 26, fontWeight: 800 }}>Admin Panel</h1>
-        <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Manage skill categories and the certifications library.</p>
+        <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Manage skill categories, certifications library, and exports.</p>
       </div>
       <div style={{ display: 'flex', gap: 4, borderBottom: '1.5px solid var(--border)', paddingBottom: 4 }}>
-        <button style={tabStyle('skills')} onClick={() => setAdminTab('skills')}>🧠 Skills Library</button>
-        <button style={tabStyle('certs')}  onClick={() => setAdminTab('certs')}>🏅 Certifications</button>
+        <button style={tabStyle('skills')} onClick={() => setAdminTab('skills')}>Skills Library</button>
+        <button style={tabStyle('certs')}  onClick={() => setAdminTab('certs')}>Certifications</button>
+        {user?.role === 'manager' && (
+          <button style={tabStyle('export')} onClick={() => setAdminTab('export')}>Export Data</button>
+        )}
       </div>
 
       {adminTab === 'skills' && (
@@ -1957,6 +2062,48 @@ function AdminPanel({ categories, setCategories, certs, setCerts }) {
               <Input label="Level"    value={newCertLvl}  onChange={setNewCertLvl}  placeholder="e.g. Professional" />
             </div>
             <Btn onClick={addCert} small>Add Certification</Btn>
+          </Card>
+        </div>
+      )}
+
+      {adminTab === 'export' && user?.role === 'manager' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Card style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
+              <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--grad)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Export Full Skill Matrix</div>
+                <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+                  Downloads an Excel workbook with three sheets covering the complete state of your practice's skills and certifications.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+              {[
+                { icon: '📊', title: 'Skills Matrix', desc: `${allUsers.length} people × ${categories.reduce((s,c)=>s+c.skills.length,0)} skills with proficiency levels` },
+                { icon: '🏅', title: 'Certifications Matrix', desc: `${allUsers.length} people × ${certs.length} certs with dates and target quarters` },
+                { icon: '👥', title: 'People Directory', desc: `Full roster with role, practice, and summary counts` },
+              ].map(s => (
+                <div key={s.title} style={{ padding: '14px 16px', borderRadius: 10, background: 'var(--panel2)', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 22, marginBottom: 8 }}>{s.icon}</div>
+                  <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{s.title}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{s.desc}</div>
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <Btn onClick={handleExport} disabled={exporting} style={{ gap: 8 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                {exporting ? 'Generating…' : 'Download Excel (.xlsx)'}
+              </Btn>
+              <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 10 }}>
+                Exports current data for {allUsers.length} team members · {categories.reduce((s,c)=>s+c.skills.length,0)} skills · {certs.length} certifications
+              </p>
+            </div>
           </Card>
         </div>
       )}
