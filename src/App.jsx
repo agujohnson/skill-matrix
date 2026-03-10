@@ -207,6 +207,8 @@ export default function App() {
   const [certs, setCerts]             = useState(SEED_CERTS)
   const [assessments, setAssessments] = useState({})
   const [userCerts, setUserCerts]     = useState({})
+  const [suggestions, setSuggestions] = useState([])
+  const [allUsers, setAllUsers]       = useState([])
 
   // Auth listener
   useEffect(() => {
