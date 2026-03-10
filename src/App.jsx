@@ -542,6 +542,7 @@ function Shell({ user, onLogout, nav, activeTab, setActiveTab, children }) {
         <nav style={{ display: 'flex', gap: 2, flex: 1 }}>
           {nav.map(n => (
             <button key={n.key} onClick={() => setActiveTab(n.key)} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
               padding: '6px 14px', borderRadius: '7px 7px 0 0', border: 'none', cursor: 'pointer',
               fontFamily: 'Space Grotesk, sans-serif', fontWeight: 500, fontSize: 13,
               background: activeTab === n.key ? '#e0008018' : 'transparent',
@@ -573,8 +574,8 @@ function Shell({ user, onLogout, nav, activeTab, setActiveTab, children }) {
 function MemberApp(ctx) {
   const [tab, setTab] = useState('skills')
   const nav = [
-    { key: 'skills', icon: '🧠', label: 'My Skills' },
-    { key: 'certs',  icon: '🏅', label: 'My Certifications' },
+    { key: 'skills', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>, label: 'My Skills' },
+    { key: 'certs',  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>, label: 'My Certifications' },
   ]
   return (
     <Shell user={ctx.user} onLogout={ctx.onLogout} nav={nav} activeTab={tab} setActiveTab={setTab}>
@@ -829,13 +830,18 @@ function MemberCerts({ user, certs, userCerts, setUserCerts }) {
 function ManagerApp(ctx) {
   const [tab, setTab] = useState('heatmap')
   const pendingCount = (ctx.suggestions || []).filter(s => s.status === 'pending').length
+  const NavIcon = ({ d, d2, viewBox = "0 0 24 24" }) => (
+    <svg width="15" height="15" viewBox={viewBox} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <path d={d} />{d2 && <path d={d2} />}
+    </svg>
+  )
   const nav = [
-    { key: 'heatmap',     icon: '🔥', label: 'Skills Heatmap' },
-    { key: 'certs',       icon: '🏅', label: 'Certifications' },
-    { key: 'domains',     icon: '🗂',  label: 'By Domain' },
-    { key: 'people',      icon: '👥', label: 'People' },
-    { key: 'suggestions', icon: '💡', label: `Suggestions${pendingCount > 0 ? ` (${pendingCount})` : ''}` },
-    { key: 'admin',       icon: '⚙️',  label: 'Admin' },
+    { key: 'heatmap',     icon: <NavIcon d="M3 3v18h18" d2="M7 16l4-4 4 4 4-6" />, label: 'Skills Heatmap' },
+    { key: 'certs',       icon: <NavIcon d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />, label: 'Certifications' },
+    { key: 'domains',     icon: <NavIcon d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />, label: 'By Domain' },
+    { key: 'people',      icon: <NavIcon d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" d2="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />, label: 'People' },
+    { key: 'suggestions', icon: <NavIcon d="M12 22c5.52 0 10-4.48 10-10S17.52 2 12 2 2 6.48 2 12s4.48 10 10 10zM12 8v4M12 16h.01" />, label: `Suggestions${pendingCount > 0 ? ` (${pendingCount})` : ''}` },
+    { key: 'admin',       icon: <NavIcon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" d2="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />, label: 'Admin' },
   ]
   return (
     <Shell user={ctx.user} onLogout={ctx.onLogout} nav={nav} activeTab={tab} setActiveTab={setTab}>
@@ -849,10 +855,19 @@ function ManagerApp(ctx) {
   )
 }
 
-function Heatmap({ assessments, categories }) {
+function Heatmap({ assessments, categories, allUsers }) {
   // In the real app, users come from Firestore. Here we derive from assessment keys.
   const memberIds = Object.keys(assessments)
   const profColor = v => ['#1e1e2a','#0d1a2e','#0a1f18','#1f1a00','#2a0a1a'][v] || '#1e1e2a'
+  const profTextColor = v => ['#4a4a60','#4a90d9','#00c87a','#ffc400','#ff4da6'][v] || '#4a4a60'
+  const profLabel = v => ['N/A','Awareness','Working','Advanced','Expert'][v] || 'N/A'
+  const [drillSkill, setDrillSkill] = useState(null)
+  const userById = Object.fromEntries((allUsers||[]).map(u => [u.id, u]))
+  const getDrillData = (skillId) =>
+    memberIds
+      .map(uid => ({ uid, prof: assessments[uid]?.[skillId]?.prof || 0, user: userById[uid] }))
+      .filter(d => d.prof > 0)
+      .sort((a,b) => b.prof - a.prof)
 
   const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
   const recentlyUpdated = Object.values(assessments).filter(u =>
@@ -862,11 +877,47 @@ function Heatmap({ assessments, categories }) {
   const totalRated = Object.values(assessments).reduce((s, u) => s + Object.values(u).filter(a => a.prof > 0).length, 0)
   const avgSkillsPerUser = memberCount > 0 ? (totalRated / memberCount).toFixed(1) : '—'
 
+  const drillData = drillSkill ? getDrillData(drillSkill.id) : []
+
   return (
     <div className="fadeUp" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+      {/* Drill-down side panel */}
+      {drillSkill && (
+        <div style={{ position:'fixed', top:0, right:0, width:340, height:'100vh', background:'var(--panel)', borderLeft:'1px solid var(--border)', zIndex:200, display:'flex', flexDirection:'column', boxShadow:'-8px 0 32px #0008' }}>
+          <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                <div style={{ width:10, height:10, borderRadius:3, background:drillSkill.catColor, flexShrink:0 }} />
+                <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:16 }}>{drillSkill.name}</div>
+              </div>
+              <div style={{ fontSize:12, color:'var(--muted)' }}>{drillData.length} {drillData.length===1?'person has':'people have'} this skill</div>
+            </div>
+            <button onClick={()=>setDrillSkill(null)} style={{ background:'none', border:'none', color:'var(--muted)', fontSize:20, cursor:'pointer', padding:4 }}>✕</button>
+          </div>
+          <div style={{ overflowY:'auto', padding:'16px', display:'flex', flexDirection:'column', gap:8 }}>
+            {drillData.length === 0
+              ? <div style={{ textAlign:'center', padding:32, color:'var(--muted)', fontSize:13 }}>No one has rated this skill yet.</div>
+              : drillData.map(d => (
+                <div key={d.uid} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', background:'var(--panel2)', borderRadius:10, border:'1px solid var(--border)' }}>
+                  <Avatar name={d.user?.name || d.uid} size={34} />
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:600, fontSize:13, fontFamily:'Space Grotesk, sans-serif', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.user?.name || d.uid}</div>
+                    <div style={{ fontSize:11, color:'var(--muted)' }}>{d.user?.team || ''}</div>
+                  </div>
+                  <span style={{ fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:99, background:profTextColor(d.prof)+'22', color:profTextColor(d.prof), whiteSpace:'nowrap' }}>
+                    {d.prof} · {profLabel(d.prof)}
+                  </span>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
+
       <div>
         <h1 style={{ fontSize: 26, fontWeight: 800 }}>Skills Heatmap</h1>
-        <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Team proficiency at a glance.</p>
+        <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Team proficiency at a glance. <span style={{ color:'var(--accent)' }}>Click any skill name to see who has it →</span></p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
@@ -920,7 +971,11 @@ function Heatmap({ assessments, categories }) {
                 </tr>
                 {cat.skills.map(sk => (
                   <tr key={sk.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '8px 16px', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: 'var(--panel)', zIndex: 1 }}>{sk.name}</td>
+                    <td onClick={() => setDrillSkill({ id: sk.id, name: sk.name, catColor: cat.color })}
+                      style={{ padding: '8px 16px', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: 'var(--panel)', zIndex: 1, cursor:'pointer', color: drillSkill?.id===sk.id ? 'var(--accent)' : 'var(--ink)', transition:'color .15s' }}
+                      onMouseEnter={e=>e.currentTarget.style.color='var(--accent)'}
+                      onMouseLeave={e=>e.currentTarget.style.color=drillSkill?.id===sk.id?'var(--accent)':'var(--ink)'}
+                    >{sk.name}</td>
                     {memberIds.map(uid => {
                       const v = assessments[uid]?.[sk.id]?.prof || 0
                       return (
@@ -1213,165 +1268,301 @@ function UserProfileModal({ person, assessments, userCerts, categories, certs, o
 }
 
 function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user: currentUser }) {
-  const [search,    setSearch]    = useState('')
-  const [selected,  setSelected]  = useState(null)
-  const [editing,   setEditing]   = useState(null)  // uid being edited
-  const [editRole,  setEditRole]  = useState('')
-  const [editTeam,  setEditTeam]  = useState('')
-  const [saving,    setSaving]    = useState(false)
+  const [mode, setMode]       = useState('roster')   // 'roster' | 'search'
+  const [search, setSearch]   = useState('')
+  const [selected, setSelected] = useState(null)
+  const [editing, setEditing] = useState(null)
+  const [editRole, setEditRole] = useState('')
+  const [editTeam, setEditTeam] = useState('')
+  const [saving, setSaving]   = useState(false)
+
+  // ── Talent search state ──────────────────────────────────────────────────
+  const [skillFilters, setSkillFilters] = useState([])   // [{skillId, skillName, catName, minLevel}]
+  const [certFilters,  setCertFilters]  = useState([])   // [{certId, certName, status}]
+  const [addingSkill,  setAddingSkill]  = useState(false)
+  const [addingCert,   setAddingCert]   = useState(false)
+  const [newSkillCat,  setNewSkillCat]  = useState('')
+  const [newSkillId,   setNewSkillId]   = useState('')
+  const [newSkillLevel,setNewSkillLevel]= useState(0)
+  const [newCertId,    setNewCertId]    = useState('')
+  const [newCertStatus,setNewCertStatus]= useState('Earned')
 
   const canEdit = ['manager'].includes(currentUser.role)
+  const profLabels = ['Any','Awareness','Working','Advanced','Expert']
 
+  // ── Roster helpers ───────────────────────────────────────────────────────
   const filtered = allUsers.filter(u =>
     u.name?.toLowerCase().includes(search.toLowerCase()) ||
     u.email?.toLowerCase().includes(search.toLowerCase()) ||
     u.team?.toLowerCase().includes(search.toLowerCase())
   )
-
-  // Group by practice/team
-  const grouped = filtered.reduce((acc, u) => {
+  const grouped  = filtered.reduce((acc, u) => {
     const t = u.team || 'Unassigned'
     if (!acc[t]) acc[t] = []
     acc[t].push(u)
     return acc
   }, {})
-
   const practices = Object.keys(grouped).sort()
+  const allTeams  = [...new Set(allUsers.map(u => u.team).filter(Boolean))].sort()
 
-  const startEdit = (u) => {
-    setEditing(u.id)
-    setEditRole(u.role || 'contributor')
-    setEditTeam(u.team || '')
+  const startEdit = (u) => { setEditing(u.id); setEditRole(u.role || 'contributor'); setEditTeam(u.team || '') }
+  const saveEdit  = async (uid) => { setSaving(true); await updateUserProfile(uid, { role: editRole, team: editTeam }); setSaving(false); setEditing(null) }
+
+  // ── Talent search helpers ────────────────────────────────────────────────
+  const skillById = Object.fromEntries(
+    categories.flatMap(c => c.skills.map(s => [s.id, { ...s, catName: c.name, catColor: c.color }]))
+  )
+  const certById  = Object.fromEntries(certs.map(c => [c.id, c]))
+
+  const addSkillFilter = () => {
+    if (!newSkillId) return
+    const sk = skillById[newSkillId]
+    if (!sk || skillFilters.find(f => f.skillId === newSkillId)) return
+    setSkillFilters(f => [...f, { skillId: newSkillId, skillName: sk.name, catName: sk.catName, catColor: sk.catColor, minLevel: newSkillLevel }])
+    setNewSkillId(''); setNewSkillCat(''); setNewSkillLevel(0); setAddingSkill(false)
+  }
+  const addCertFilter = () => {
+    if (!newCertId) return
+    const c = certById[newCertId]
+    if (!c || certFilters.find(f => f.certId === newCertId)) return
+    setCertFilters(f => [...f, { certId: newCertId, certName: c.name, status: newCertStatus }])
+    setNewCertId(''); setAddingCert(false)
   }
 
-  const saveEdit = async (uid) => {
-    setSaving(true)
-    await updateUserProfile(uid, { role: editRole, team: editTeam })
-    setSaving(false)
-    setEditing(null)
-  }
+  // ── Match logic ──────────────────────────────────────────────────────────
+  const searchResults = allUsers.filter(u => {
+    if (skillFilters.length === 0 && certFilters.length === 0) return false
+    const ua = assessments[u.id] || {}
+    const uc = userCerts[u.id]   || []
+    const skillsOk = skillFilters.every(f => {
+      const a = ua[f.skillId]
+      return a && a.prof >= (f.minLevel === 0 ? 1 : f.minLevel)
+    })
+    const certsOk = certFilters.every(f => {
+      return uc.some(c => c.certId === f.certId && (f.status === 'Any' || c.status === f.status))
+    })
+    return skillsOk && certsOk
+  }).map(u => {
+    const ua = assessments[u.id] || {}
+    const uc = userCerts[u.id]   || []
+    return {
+      ...u,
+      matchedSkills: skillFilters.map(f => ({ ...f, prof: ua[f.skillId]?.prof || 0 })),
+      matchedCerts:  certFilters.map(f => ({ ...f, earned: uc.find(c => c.certId === f.certId)?.status })),
+    }
+  })
 
-  // All unique teams for the move-to dropdown
-  const allTeams = [...new Set(allUsers.map(u => u.team).filter(Boolean))].sort()
+  const profColor = v => ['#4a4a60','#4a90d9','#00c87a','#ffc400','#ff4da6'][v] || '#4a4a60'
+  const profLabel = v => ['N/A','Awareness','Working','Advanced','Expert'][v] || 'N/A'
+
+  const hasFilters = skillFilters.length > 0 || certFilters.length > 0
+
+  // ── Shared person row ────────────────────────────────────────────────────
+  const PersonRow = ({ person, matchedSkills, matchedCerts, showEdit = false }) => (
+    <Card style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 18px', flexWrap:'wrap' }}>
+      <Avatar name={person.name || '?'} size={38} style={{ cursor:'pointer' }} onClick={() => setSelected(person)} />
+      <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={() => setSelected(person)}>
+        <div style={{ fontWeight:600, fontSize:14, fontFamily:'Space Grotesk, sans-serif' }}>{person.name}</div>
+        <div style={{ fontSize:12, color:'var(--muted)' }}>{person.email} · {person.team}</div>
+      </div>
+      {/* Matched skill chips */}
+      {matchedSkills && matchedSkills.length > 0 && (
+        <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+          {matchedSkills.map(f => (
+            <span key={f.skillId} style={{ fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:99, background: profColor(f.prof)+'22', color: profColor(f.prof) }}>
+              {f.skillName} · {profLabel(f.prof)}
+            </span>
+          ))}
+          {matchedCerts && matchedCerts.map(f => (
+            <span key={f.certId} style={{ fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:99, background:'#0a1f18', color:'#00d084' }}>
+              🏅 {f.certName}
+            </span>
+          ))}
+        </div>
+      )}
+      {showEdit && editing === person.id ? (
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <select value={editRole} onChange={e => setEditRole(e.target.value)} style={{ padding:'6px 10px', borderRadius:7, border:'1px solid var(--accent)', background:'var(--panel2)', color:'var(--ink)', fontSize:12 }}>
+            {ROLES.map(r => <option key={r.val} value={r.val}>{r.label}</option>)}
+          </select>
+          <select value={editTeam} onChange={e => setEditTeam(e.target.value)} style={{ padding:'6px 10px', borderRadius:7, border:'1px solid var(--accent)', background:'var(--panel2)', color:'var(--ink)', fontSize:12 }}>
+            {allTeams.map(t => <option key={t}>{t}</option>)}
+          </select>
+          <Btn small onClick={() => saveEdit(person.id)} disabled={saving}>{saving ? '…' : '✓'}</Btn>
+          <Btn small variant="secondary" onClick={() => setEditing(null)}>Cancel</Btn>
+        </div>
+      ) : (
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <RoleBadge role={person.role} />
+          {showEdit && canEdit && (
+            <button onClick={() => startEdit(person)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:7, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}
+              onMouseEnter={e=>{e.target.style.borderColor='var(--accent)';e.target.style.color='var(--accent)'}}
+              onMouseLeave={e=>{e.target.style.borderColor='var(--border)';e.target.style.color='var(--muted)'}}>Edit</button>
+          )}
+          <button onClick={() => setSelected(person)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:7, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}
+            onMouseEnter={e=>{e.target.style.borderColor='var(--accent)';e.target.style.color='var(--accent)'}}
+            onMouseLeave={e=>{e.target.style.borderColor='var(--border)';e.target.style.color='var(--muted)'}}>View profile</button>
+        </div>
+      )}
+    </Card>
+  )
 
   return (
     <div className="fadeUp" style={{ display:'flex', flexDirection:'column', gap:24 }}>
-      {selected && (
-        <UserProfileModal
-          person={selected}
-          assessments={assessments}
-          userCerts={userCerts}
-          categories={categories}
-          certs={certs}
-          onClose={() => setSelected(null)}
-        />
-      )}
+      {selected && <UserProfileModal person={selected} assessments={assessments} userCerts={userCerts} categories={categories} certs={certs} onClose={() => setSelected(null)} />}
 
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:16 }}>
+      {/* Mode toggle */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
         <div>
           <h1 style={{ fontSize:26, fontWeight:800 }}>People</h1>
-          <p style={{ color:'var(--muted)', fontSize:14, marginTop:4 }}>
-            {allUsers.length} members across {practices.length} practices
-          </p>
+          <p style={{ color:'var(--muted)', fontSize:14, marginTop:4 }}>{allUsers.length} members across {[...new Set(allUsers.map(u=>u.team).filter(Boolean))].length} practices</p>
         </div>
-        <input
-          value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name, email or practice…"
-          style={{
-            padding:'9px 14px', borderRadius:9, border:'1px solid var(--border)',
-            background:'var(--panel2)', color:'var(--ink)', fontSize:13,
-            fontFamily:'Inter, sans-serif', width:300, outline:'none',
-          }}
-          onFocus={e => e.target.style.borderColor='var(--accent)'}
-          onBlur={e => e.target.style.borderColor='var(--border)'}
-        />
+        <div style={{ display:'flex', background:'var(--panel)', border:'1px solid var(--border)', borderRadius:10, padding:4, gap:4 }}>
+          {[['roster','👥  Roster'],['search','🔍  Talent Search']].map(([key,label]) => (
+            <button key={key} onClick={() => setMode(key)} style={{
+              padding:'7px 16px', borderRadius:7, border:'none', cursor:'pointer',
+              fontFamily:'Space Grotesk, sans-serif', fontWeight:600, fontSize:13,
+              background: mode===key ? 'var(--grad)' : 'transparent',
+              color: mode===key ? '#fff' : 'var(--muted)',
+              boxShadow: mode===key ? 'var(--glow)' : 'none', transition:'all .2s',
+            }}>{label}</button>
+          ))}
+        </div>
       </div>
 
-      {/* Grouped by practice */}
-      {practices.map(practice => (
-        <div key={practice}>
-          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
-            <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:14, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em' }}>
-              {practice}
+      {/* ── ROSTER MODE ───────────────────────────────────────────────────── */}
+      {mode === 'roster' && (
+        <>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, email or practice…"
+            style={{ padding:'9px 14px', borderRadius:9, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:13, fontFamily:'Inter, sans-serif', outline:'none' }}
+            onFocus={e=>e.target.style.borderColor='var(--accent)'} onBlur={e=>e.target.style.borderColor='var(--border)'} />
+          {practices.map(practice => (
+            <div key={practice}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+                <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:14, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em' }}>{practice}</div>
+                <div style={{ fontSize:12, color:'var(--muted)', background:'var(--panel2)', padding:'2px 8px', borderRadius:99, border:'1px solid var(--border)' }}>{grouped[practice].length}</div>
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {grouped[practice].map(person => <PersonRow key={person.id} person={person} showEdit={true} />)}
+              </div>
             </div>
-            <div style={{ fontSize:12, color:'var(--muted)', background:'var(--panel2)', padding:'2px 8px', borderRadius:99, border:'1px solid var(--border)' }}>
-              {grouped[practice].length}
-            </div>
-          </div>
+          ))}
+          {filtered.length === 0 && <div style={{ textAlign:'center', padding:48, color:'var(--muted)' }}>No people match your search.</div>}
+        </>
+      )}
 
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {grouped[practice].map(person => (
-              <Card key={person.id} style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 18px' }}>
-                <Avatar name={person.name || '?'} size={38} style={{ cursor:'pointer' }} />
+      {/* ── TALENT SEARCH MODE ────────────────────────────────────────────── */}
+      {mode === 'search' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
 
-                {/* Name + email */}
-                <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={() => setSelected(person)}>
-                  <div style={{ fontWeight:600, fontSize:14, fontFamily:'Space Grotesk, sans-serif', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                    {person.name}
-                  </div>
-                  <div style={{ fontSize:12, color:'var(--muted)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                    {person.email}
-                  </div>
-                </div>
+          {/* Filter builder */}
+          <Card style={{ display:'flex', flexDirection:'column', gap:16 }}>
+            <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:14 }}>Build your search</div>
 
-                {/* Role + team — inline edit if editing this person */}
-                {editing === person.id ? (
-                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                    <select value={editRole} onChange={e => setEditRole(e.target.value)} style={{
-                      padding:'6px 10px', borderRadius:7, border:'1px solid var(--accent)',
-                      background:'var(--panel2)', color:'var(--ink)', fontSize:12, fontFamily:'Space Grotesk, sans-serif',
-                    }}>
-                      {ROLES.map(r => <option key={r.val} value={r.val}>{r.label}</option>)}
-                    </select>
-                    <select value={editTeam} onChange={e => setEditTeam(e.target.value)} style={{
-                      padding:'6px 10px', borderRadius:7, border:'1px solid var(--accent)',
-                      background:'var(--panel2)', color:'var(--ink)', fontSize:12, fontFamily:'Space Grotesk, sans-serif',
-                    }}>
-                      {allTeams.map(t => <option key={t}>{t}</option>)}
-                    </select>
-                    <Btn small onClick={() => saveEdit(person.id)} disabled={saving}>
-                      {saving ? '…' : '✓ Save'}
-                    </Btn>
-                    <Btn small variant="secondary" onClick={() => setEditing(null)}>Cancel</Btn>
+            {/* Active skill filters */}
+            {skillFilters.length > 0 && (
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                {skillFilters.map(f => (
+                  <div key={f.skillId} style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px 5px 12px', background:'var(--panel2)', border:'1px solid var(--border)', borderRadius:99 }}>
+                    <span style={{ width:7, height:7, borderRadius:'50%', background:f.catColor }} />
+                    <span style={{ fontSize:12, fontWeight:600 }}>{f.skillName}</span>
+                    {f.minLevel > 0 && <span style={{ fontSize:11, color:'var(--muted)' }}>≥ {profLabels[f.minLevel]}</span>}
+                    <button onClick={() => setSkillFilters(fs => fs.filter(x => x.skillId !== f.skillId))}
+                      style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:14, lineHeight:1, padding:'0 2px' }}>✕</button>
                   </div>
-                ) : (
-                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                    <RoleBadge role={person.role} />
-                    {canEdit && (
-                      <button onClick={() => startEdit(person)} style={{
-                        background:'none', border:'1px solid var(--border)', borderRadius:7,
-                        padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--muted)',
-                        fontFamily:'Space Grotesk, sans-serif', transition:'all .15s',
-                      }}
-                      onMouseEnter={e => { e.target.style.borderColor='var(--accent)'; e.target.style.color='var(--accent)' }}
-                      onMouseLeave={e => { e.target.style.borderColor='var(--border)'; e.target.style.color='var(--muted)' }}
-                      >Edit</button>
-                    )}
-                    <button onClick={() => setSelected(person)} style={{
-                      background:'none', border:'1px solid var(--border)', borderRadius:7,
-                      padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--muted)',
-                      fontFamily:'Space Grotesk, sans-serif', transition:'all .15s',
-                    }}
-                    onMouseEnter={e => { e.target.style.borderColor='var(--accent)'; e.target.style.color='var(--accent)' }}
-                    onMouseLeave={e => { e.target.style.borderColor='var(--border)'; e.target.style.color='var(--muted)' }}
-                    >View profile</button>
+                ))}
+              </div>
+            )}
+
+            {/* Active cert filters */}
+            {certFilters.length > 0 && (
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                {certFilters.map(f => (
+                  <div key={f.certId} style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px 5px 12px', background:'#0a1f18', border:'1px solid #00d08433', borderRadius:99 }}>
+                    <span style={{ fontSize:12, fontWeight:600, color:'#00d084' }}>🏅 {f.certName}</span>
+                    <span style={{ fontSize:11, color:'var(--muted)' }}>{f.status}</span>
+                    <button onClick={() => setCertFilters(fs => fs.filter(x => x.certId !== f.certId))}
+                      style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:14, lineHeight:1, padding:'0 2px' }}>✕</button>
                   </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add skill row */}
+            {addingSkill ? (
+              <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                <select value={newSkillCat} onChange={e=>{setNewSkillCat(e.target.value);setNewSkillId('')}} style={{ padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:13 }}>
+                  <option value="">Select domain…</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                {newSkillCat && (
+                  <select value={newSkillId} onChange={e=>setNewSkillId(e.target.value)} style={{ padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:13 }}>
+                    <option value="">Select skill…</option>
+                    {(categories.find(c=>c.id===newSkillCat)?.skills||[]).filter(s=>!skillFilters.find(f=>f.skillId===s.id)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
                 )}
-              </Card>
-            ))}
-          </div>
-        </div>
-      ))}
+                <select value={newSkillLevel} onChange={e=>setNewSkillLevel(Number(e.target.value))} style={{ padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:13 }}>
+                  {profLabels.map((l,i) => <option key={i} value={i}>{i===0?'Any level':`≥ ${l}`}</option>)}
+                </select>
+                <Btn small onClick={addSkillFilter} disabled={!newSkillId}>Add</Btn>
+                <Btn small variant="secondary" onClick={()=>setAddingSkill(false)}>Cancel</Btn>
+              </div>
+            ) : addingCert ? (
+              <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                <select value={newCertId} onChange={e=>setNewCertId(e.target.value)} style={{ padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:13 }}>
+                  <option value="">Select certification…</option>
+                  {certs.filter(c=>!certFilters.find(f=>f.certId===c.id)).map(c => <option key={c.id} value={c.id}>{c.name} ({c.provider})</option>)}
+                </select>
+                <select value={newCertStatus} onChange={e=>setNewCertStatus(e.target.value)} style={{ padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:13 }}>
+                  <option>Earned</option><option>Planned</option><option value="Any">Any</option>
+                </select>
+                <Btn small onClick={addCertFilter} disabled={!newCertId}>Add</Btn>
+                <Btn small variant="secondary" onClick={()=>setAddingCert(false)}>Cancel</Btn>
+              </div>
+            ) : (
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={()=>{setAddingSkill(true);setAddingCert(false)}} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'1px dashed var(--border)', background:'none', color:'var(--muted)', cursor:'pointer', fontSize:13, fontFamily:'Space Grotesk, sans-serif', fontWeight:600, transition:'all .15s' }}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor='var(--accent)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+                  + Add skill filter
+                </button>
+                <button onClick={()=>{setAddingCert(true);setAddingSkill(false)}} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'1px dashed var(--border)', background:'none', color:'var(--muted)', cursor:'pointer', fontSize:13, fontFamily:'Space Grotesk, sans-serif', fontWeight:600, transition:'all .15s' }}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor='var(--accent)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+                  + Add cert filter
+                </button>
+                {hasFilters && <Btn small variant="secondary" onClick={()=>{setSkillFilters([]);setCertFilters([])}}>Clear all</Btn>}
+              </div>
+            )}
+          </Card>
 
-      {filtered.length === 0 && (
-        <div style={{ textAlign:'center', padding:48, color:'var(--muted)' }}>
-          No people match your search.
+          {/* Results */}
+          {!hasFilters ? (
+            <div style={{ textAlign:'center', padding:'48px 0', color:'var(--muted)' }}>
+              <div style={{ fontSize:32, marginBottom:12 }}>🔍</div>
+              <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:600, fontSize:15, marginBottom:6 }}>Add filters to find people</div>
+              <div style={{ fontSize:13 }}>Search by skills, proficiency level, and certifications.</div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:13, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:12 }}>
+                {searchResults.length} {searchResults.length === 1 ? 'person matches' : 'people match'} all criteria
+              </div>
+              {searchResults.length === 0
+                ? <Card style={{ textAlign:'center', padding:32, color:'var(--muted)' }}>
+                    <div style={{ fontSize:28, marginBottom:8 }}>😕</div>
+                    <div style={{ fontSize:14 }}>No one matches all selected criteria yet.</div>
+                  </Card>
+                : <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {searchResults.map(p => <PersonRow key={p.id} person={p} matchedSkills={p.matchedSkills} matchedCerts={p.matchedCerts} />)}
+                  </div>
+              }
+            </div>
+          )}
         </div>
       )}
     </div>
   )
 }
+
 
 // ─── Suggestions Panel (Manager) ─────────────────────────────────────────────
 function SuggestionsPanel({ suggestions = [], categories, setCategories, certs, setCerts }) {
