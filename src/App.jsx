@@ -705,6 +705,11 @@ function MemberSkills({ user, categories, assessments, setAssessment }) {
         {PROFICIENCY.map(p => <Badge key={p.val} label={`${p.val} – ${p.label}`} color={p.color} textColor={p.textColor} />)}
       </div>
 
+      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderRadius:9, background:'#1f1a00', border:'1px solid #ffb80033' }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffb800" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span style={{ fontSize:12, color:'#ffb800', fontWeight:500 }}>Only rate skills backed by hands-on experience or training within the last 5 years. Older experience should not be considered.</span>
+      </div>
+
       {categories.map(cat => (
         <div key={cat.id}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -718,9 +723,12 @@ function MemberSkills({ user, categories, assessments, setAssessment }) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
             {cat.skills.map(sk => {
-              const a = myA[sk.id] || { prof: 0, interest: 'Low' }
+              const a = myA[sk.id] || { prof: 0, interest: 'Low', lastYear: '' }
+              const currentYear = new Date().getFullYear()
+              const yearOpts = Array.from({ length: 6 }, (_, i) => currentYear - i)
+              const isStale = a.lastYear && Number(a.lastYear) < currentYear - 5
               return (
-                <Card key={sk.id} style={{ padding: '14px 16px' }}>
+                <Card key={sk.id} style={{ padding: '14px 16px', border: isStale ? '1px solid #ff444433' : undefined }}>
                   <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>{sk.name}</div>
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Proficiency</div>
@@ -736,6 +744,19 @@ function MemberSkills({ user, categories, assessments, setAssessment }) {
                       ))}
                     </div>
                   </div>
+                  {a.prof > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Last Active Year</div>
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <select value={a.lastYear || ''} onChange={e => setSkill(sk.id, 'lastYear', e.target.value)}
+                          style={{ padding:'4px 8px', borderRadius:7, border:`1px solid ${isStale ? '#ff4444' : 'var(--border)'}`, background:'var(--panel2)', color: isStale ? '#ff4444' : 'var(--ink)', fontSize:12, fontFamily:'Inter, sans-serif' }}>
+                          <option value="">Select year…</option>
+                          {yearOpts.map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                        {isStale && <span style={{ fontSize:11, color:'#ff4444', fontWeight:600 }}>⚠ Outside 5-year window</span>}
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Growth Interest</div>
                     <div style={{ display: 'flex', gap: 4 }}>
@@ -762,6 +783,14 @@ function MemberSkills({ user, categories, assessments, setAssessment }) {
 
 function MemberCerts({ user, certs, userCerts, setUserCerts }) {
   const myC = userCerts[user.uid] || []
+  const [editing, setEditing] = useState(null) // certId being edited
+  const [showCertModal, setShowCertModal] = useState(false)
+  const handleSuggestCert = async (payload) => { await fbSubmitSuggestion(payload) }
+
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: 20 }, (_, i) => currentYear - i)
+  const futureYears = Array.from({ length: 6 }, (_, i) => currentYear + i)
+  const quarters = ['Q1', 'Q2', 'Q3', 'Q4']
 
   const toggle = (certId, status) => {
     const exists = myC.find(c => c.certId === certId)
@@ -769,28 +798,35 @@ function MemberCerts({ user, certs, userCerts, setUserCerts }) {
     if (exists) {
       if (exists.status === status) {
         updated = myC.filter(c => c.certId !== certId)
+        setEditing(null)
       } else {
-        updated = myC.map(c => c.certId === certId ? { ...c, status } : c)
+        updated = myC.map(c => c.certId === certId ? { ...c, status, acquiredDate: '', expiryDate: '', plannedYear: '', plannedQuarter: '' } : c)
+        setEditing(certId)
       }
     } else {
-      updated = [...myC, { certId, status, date: new Date().toISOString().slice(0, 10) }]
+      updated = [...myC, { certId, status, acquiredDate: '', expiryDate: '', plannedYear: '', plannedQuarter: '' }]
+      setEditing(certId)
     }
     setUserCerts(user.uid, updated)
   }
 
-  const statusColors = {
-    Earned:  { bg: '#0a1f18', text: '#00d084' },
-    Planned: { bg: '#0d1a2e', text: '#4a90d9' },
+  const updateField = (certId, field, val) => {
+    const updated = myC.map(c => c.certId === certId ? { ...c, [field]: val } : c)
+    setUserCerts(user.uid, updated)
   }
 
-  const [showCertModal, setShowCertModal] = useState(false)
-  const handleSuggestCert = async (payload) => { await fbSubmitSuggestion(payload) }
+  const statusColors = { Earned: { bg: '#0a1f18', text: '#00d084' }, Planned: { bg: '#0d1a2e', text: '#4a90d9' } }
+
+  const isExpiringSoon = (expiryDate) => {
+    if (!expiryDate) return false
+    const diff = (new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24 * 30)
+    return diff < 3 && diff > 0
+  }
+  const isExpired = (expiryDate) => expiryDate && new Date(expiryDate) < new Date()
 
   return (
     <div className="fadeUp" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {showCertModal && (
-        <SuggestModal type="cert" user={user} allDomains={[]} onClose={() => setShowCertModal(false)} onSubmit={handleSuggestCert} />
-      )}
+      {showCertModal && <SuggestModal type="cert" user={user} allDomains={[]} onClose={() => setShowCertModal(false)} onSubmit={handleSuggestCert} />}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800 }}>My Certifications</h1>
@@ -805,19 +841,60 @@ function MemberCerts({ user, certs, userCerts, setUserCerts }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
         {certs.map(cert => {
           const mine = myC.find(c => c.certId === cert.id)
+          const isEditOpen = editing === cert.id
+          const expWarn = isExpiringSoon(mine?.expiryDate)
+          const expBad  = isExpired(mine?.expiryDate)
           return (
-            <Card key={cert.id} style={{ padding: '14px 16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+            <Card key={cert.id} style={{ padding: '14px 16px', border: expBad ? '1px solid #ff444466' : expWarn ? '1px solid #ffb80066' : undefined }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{cert.name}</div>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3 }}>{cert.name}</div>
                   <div style={{ fontSize: 12, color: 'var(--muted)' }}>{cert.provider} · {cert.level}</div>
                 </div>
                 {mine && <Badge label={mine.status} color={statusColors[mine.status].bg} textColor={statusColors[mine.status].text} />}
               </div>
-              <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+
+              {/* Status toggles */}
+              <div style={{ display: 'flex', gap: 6, marginBottom: mine ? 12 : 0 }}>
                 <Btn small variant={mine?.status === 'Earned' ? 'primary' : 'secondary'} onClick={() => toggle(cert.id, 'Earned')}>✓ Earned</Btn>
                 <Btn small variant={mine?.status === 'Planned' ? 'primary' : 'secondary'} onClick={() => toggle(cert.id, 'Planned')}>⏱ Planned</Btn>
               </div>
+
+              {/* Detail fields */}
+              {mine?.status === 'Earned' && (
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  <div>
+                    <div style={{ fontSize:11, color:'var(--muted)', fontWeight:600, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>Date Acquired</div>
+                    <input type="month" value={mine.acquiredDate || ''} onChange={e => updateField(cert.id, 'acquiredDate', e.target.value)}
+                      style={{ padding:'5px 9px', borderRadius:7, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:12, fontFamily:'Inter, sans-serif', width:'100%' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color: expBad ? '#ff4444' : expWarn ? '#ffb800' : 'var(--muted)', fontWeight:600, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>
+                      Expiry Date {expBad ? '⚠ Expired' : expWarn ? '⚠ Expiring Soon' : '(optional)'}
+                    </div>
+                    <input type="month" value={mine.expiryDate || ''} onChange={e => updateField(cert.id, 'expiryDate', e.target.value)}
+                      style={{ padding:'5px 9px', borderRadius:7, border:`1px solid ${expBad ? '#ff4444' : expWarn ? '#ffb800' : 'var(--border)'}`, background:'var(--panel2)', color: expBad ? '#ff4444' : expWarn ? '#ffb800' : 'var(--ink)', fontSize:12, fontFamily:'Inter, sans-serif', width:'100%' }} />
+                  </div>
+                </div>
+              )}
+
+              {mine?.status === 'Planned' && (
+                <div>
+                  <div style={{ fontSize:11, color:'var(--muted)', fontWeight:600, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>Target Date</div>
+                  <div style={{ display:'flex', gap:6 }}>
+                    <select value={mine.plannedYear || ''} onChange={e => updateField(cert.id, 'plannedYear', e.target.value)}
+                      style={{ flex:1, padding:'5px 8px', borderRadius:7, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:12 }}>
+                      <option value="">Year…</option>
+                      {futureYears.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                    <select value={mine.plannedQuarter || ''} onChange={e => updateField(cert.id, 'plannedQuarter', e.target.value)}
+                      style={{ flex:1, padding:'5px 8px', borderRadius:7, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:12 }}>
+                      <option value="">Quarter…</option>
+                      {quarters.map(q => <option key={q} value={q}>{q}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
             </Card>
           )
         })}
@@ -1004,39 +1081,108 @@ function Heatmap({ assessments, categories, allUsers }) {
   )
 }
 
-function CertTracker({ userCerts, certs }) {
+function CertTracker({ userCerts, certs, allUsers }) {
   const allUserIds = Object.keys(userCerts)
-  const earned  = certId => allUserIds.filter(uid => userCerts[uid]?.find(c => c.certId === certId && c.status === 'Earned'))
-  const planned = certId => allUserIds.filter(uid => userCerts[uid]?.find(c => c.certId === certId && c.status === 'Planned'))
+  const userById = Object.fromEntries((allUsers||[]).map(u => [u.id, u]))
+  const [expanded, setExpanded] = useState(null)
+
+  const getCertHolders = (certId) =>
+    allUserIds.flatMap(uid => {
+      const c = userCerts[uid]?.find(c => c.certId === certId)
+      if (!c) return []
+      return [{ uid, user: userById[uid], ...c }]
+    })
+
+  const isExpiringSoon = (expiryDate) => {
+    if (!expiryDate) return false
+    const diff = (new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24 * 30)
+    return diff < 3 && diff > 0
+  }
+  const isExpired = (expiryDate) => expiryDate && new Date(expiryDate) < new Date()
+
+  const fmtMonth = (ym) => {
+    if (!ym) return null
+    const [y, m] = ym.split('-')
+    return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m)-1]} ${y}`
+  }
 
   return (
     <div className="fadeUp" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div>
         <h1 style={{ fontSize: 26, fontWeight: 800 }}>Certifications Tracker</h1>
-        <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Who holds what — and what the team is pursuing.</p>
+        <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Who holds what, when they earned it, and what the team is pursuing.</p>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {certs.map(cert => {
-          const e = earned(cert.id)
-          const p = planned(cert.id)
+          const holders = getCertHolders(cert.id)
+          const earned  = holders.filter(h => h.status === 'Earned')
+          const planned = holders.filter(h => h.status === 'Planned')
+          const expiredCount = earned.filter(h => isExpired(h.expiryDate)).length
+          const warnCount    = earned.filter(h => isExpiringSoon(h.expiryDate)).length
+          const isOpen = expanded === cert.id
           return (
-            <Card key={cert.id} style={{ padding: '16px 20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: 200 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{cert.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{cert.provider} · {cert.level}</div>
+            <Card key={cert.id} style={{ padding: 0, overflow:'hidden', border: expiredCount > 0 ? '1px solid #ff444433' : warnCount > 0 ? '1px solid #ffb80033' : undefined }}>
+              {/* Header row */}
+              <div onClick={() => setExpanded(isOpen ? null : cert.id)}
+                style={{ padding:'16px 20px', display:'flex', alignItems:'center', gap:16, cursor:'pointer', flexWrap:'wrap' }}>
+                <div style={{ flex:1, minWidth:180 }}>
+                  <div style={{ fontWeight:700, fontSize:14 }}>{cert.name}</div>
+                  <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>{cert.provider} · {cert.level}</div>
                 </div>
-                <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 20, fontWeight: 800, fontFamily: 'Syne, sans-serif', color: '#16a34a' }}>{e.length}</div>
-                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>Earned</div>
+                <div style={{ display:'flex', gap:20, alignItems:'center' }}>
+                  <div style={{ textAlign:'center' }}>
+                    <div style={{ fontSize:20, fontWeight:800, fontFamily:'Space Grotesk, sans-serif', color:'#00d084' }}>{earned.length}</div>
+                    <div style={{ fontSize:11, color:'var(--muted)' }}>Earned</div>
                   </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 20, fontWeight: 800, fontFamily: 'Syne, sans-serif', color: '#2563eb' }}>{p.length}</div>
-                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>Planned</div>
+                  <div style={{ textAlign:'center' }}>
+                    <div style={{ fontSize:20, fontWeight:800, fontFamily:'Space Grotesk, sans-serif', color:'#4a90d9' }}>{planned.length}</div>
+                    <div style={{ fontSize:11, color:'var(--muted)' }}>Planned</div>
                   </div>
+                  {expiredCount > 0 && <Badge label={`${expiredCount} expired`} color="#2a0a0a" textColor="#ff4444" />}
+                  {warnCount > 0 && <Badge label={`${warnCount} expiring soon`} color="#1f1a00" textColor="#ffb800" />}
                 </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition:'transform .2s', flexShrink:0 }}><polyline points="6 9 12 15 18 9"/></svg>
               </div>
+
+              {/* Expanded list */}
+              {isOpen && (
+                <div style={{ borderTop:'1px solid var(--border)', padding:'12px 20px', display:'flex', flexDirection:'column', gap:6 }}>
+                  {holders.length === 0 && <div style={{ fontSize:13, color:'var(--muted)', padding:'8px 0' }}>No one has this cert yet.</div>}
+                  {earned.map(h => {
+                    const expired = isExpired(h.expiryDate)
+                    const warn    = isExpiringSoon(h.expiryDate)
+                    return (
+                      <div key={h.uid} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 12px', borderRadius:9, background:'var(--panel2)', border:`1px solid ${expired ? '#ff444433' : warn ? '#ffb80033' : 'transparent'}` }}>
+                        <Avatar name={h.user?.name || h.uid} size={30} />
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontWeight:600, fontSize:13 }}>{h.user?.name || h.uid}</div>
+                          <div style={{ fontSize:11, color:'var(--muted)' }}>{h.user?.team}</div>
+                        </div>
+                        <Badge label="Earned" color="#0a1f18" textColor="#00d084" />
+                        {h.acquiredDate && <span style={{ fontSize:11, color:'var(--muted)' }}>Acquired: {fmtMonth(h.acquiredDate)}</span>}
+                        {h.expiryDate && (
+                          <span style={{ fontSize:11, fontWeight:600, color: expired ? '#ff4444' : warn ? '#ffb800' : 'var(--muted)' }}>
+                            {expired ? '⚠ Expired' : warn ? '⚠ Expires'  : 'Expires'}: {fmtMonth(h.expiryDate)}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {planned.map(h => (
+                    <div key={h.uid} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 12px', borderRadius:9, background:'var(--panel2)' }}>
+                      <Avatar name={h.user?.name || h.uid} size={30} />
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontWeight:600, fontSize:13 }}>{h.user?.name || h.uid}</div>
+                        <div style={{ fontSize:11, color:'var(--muted)' }}>{h.user?.team}</div>
+                      </div>
+                      <Badge label="Planned" color="#0d1a2e" textColor="#4a90d9" />
+                      {h.plannedYear && h.plannedQuarter && (
+                        <span style={{ fontSize:11, color:'#4a90d9', fontWeight:600 }}>Target: {h.plannedQuarter} {h.plannedYear}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
           )
         })}
@@ -1208,6 +1354,7 @@ function UserProfileModal({ person, assessments, userCerts, categories, certs, o
                       <span style={{ fontSize:11, fontWeight:700, color:profColor(sk.prof), background:profColor(sk.prof)+'22', padding:'2px 7px', borderRadius:99 }}>
                         {sk.prof} · {profLabel(sk.prof)}
                       </span>
+                      {sk.lastYear && <span style={{ fontSize:11, color:'var(--muted)' }}>({sk.lastYear})</span>}
                     </div>
                   ))}
                 </div>
@@ -1221,13 +1368,18 @@ function UserProfileModal({ person, assessments, userCerts, categories, certs, o
             </div>
             {earnedCerts.length === 0
               ? <div style={{ color:'var(--muted)', fontSize:13 }}>None recorded yet.</div>
-              : <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+              : <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                   {earnedCerts.map(c => {
                     const cert = certById[c.certId]
                     if (!cert) return null
+                    const expired = c.expiryDate && new Date(c.expiryDate) < new Date()
+                    const warn = c.expiryDate && !expired && (new Date(c.expiryDate) - new Date()) / (1000*60*60*24*30) < 3
+                    const fmtM = ym => { if (!ym) return null; const [y,m] = ym.split('-'); return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m)-1]} ${y}` }
                     return (
-                      <div key={c.certId} style={{ padding:'6px 12px', background:'#0a1f18', border:'1px solid #00d08433', borderRadius:8, fontSize:13, color:'#00d084', fontWeight:500 }}>
-                        🏅 {cert.name}
+                      <div key={c.certId} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:'#0a1f18', border:`1px solid ${expired?'#ff444466':warn?'#ffb80066':'#00d08433'}`, borderRadius:8, flexWrap:'wrap' }}>
+                        <span style={{ fontSize:13, color:'#00d084', fontWeight:600 }}>🏅 {cert.name}</span>
+                        {c.acquiredDate && <span style={{ fontSize:11, color:'var(--muted)' }}>Acquired: {fmtM(c.acquiredDate)}</span>}
+                        {c.expiryDate && <span style={{ fontSize:11, fontWeight:600, color: expired?'#ff4444':warn?'#ffb800':'var(--muted)' }}>{expired?'⚠ Expired':warn?'⚠ Expiring soon':'Expires'}: {fmtM(c.expiryDate)}</span>}
                       </div>
                     )
                   })}
@@ -1246,6 +1398,7 @@ function UserProfileModal({ person, assessments, userCerts, categories, certs, o
                   {growthSkills.map(sk => (
                     <div key={sk.id} style={{ padding:'6px 12px', background:'#1f1a00', border:'1px solid #ffc40033', borderRadius:8, fontSize:13, color:'#ffc400', fontWeight:500 }}>
                       ⭐ {sk.name} <span style={{ opacity:.6 }}>({sk.catName})</span>
+                      {sk.lastYear && <span style={{ opacity:.6, marginLeft:4 }}>· {sk.lastYear}</span>}
                     </div>
                   ))}
                   {plannedCerts.map(c => {
@@ -1254,6 +1407,7 @@ function UserProfileModal({ person, assessments, userCerts, categories, certs, o
                     return (
                       <div key={c.certId} style={{ padding:'6px 12px', background:'#0d1a2e', border:'1px solid #4a90d933', borderRadius:8, fontSize:13, color:'#4a90d9', fontWeight:500 }}>
                         📋 {cert.name}
+                        {c.plannedYear && c.plannedQuarter && <span style={{ opacity:.7, marginLeft:4 }}>· {c.plannedQuarter} {c.plannedYear}</span>}
                       </div>
                     )
                   })}
