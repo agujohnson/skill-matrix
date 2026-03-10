@@ -113,10 +113,10 @@ const SEED_CERTS = [
 
 const PROFICIENCY = [
   { val: 0, label: 'N/A',       color: '#1e1e2a', textColor: '#4a4a60' },
-  { val: 1, label: 'Awareness', color: '#0d1a2e', textColor: '#4a90d9' },
-  { val: 2, label: 'Working',   color: '#0a1f18', textColor: '#00c87a' },
-  { val: 3, label: 'Advanced',  color: '#1f1a00', textColor: '#ffc400' },
-  { val: 4, label: 'Expert',    color: '#2a0a1a', textColor: '#ff4da6' },
+  { val: 1, label: 'Awareness', color: '#2a0a1a', textColor: '#e00080' },
+  { val: 2, label: 'Working',   color: '#1f1a00', textColor: '#ffc400' },
+  { val: 3, label: 'Advanced',  color: '#0d1a2e', textColor: '#4a90d9' },
+  { val: 4, label: 'Expert',    color: '#0a1f18', textColor: '#00c87a' },
 ]
 
 const INTEREST = ['Low', 'Medium', 'High']
@@ -949,7 +949,7 @@ function ManagerApp(ctx) {
 
 function Heatmap({ assessments, categories, allUsers }) {
   const memberIds = Object.keys(assessments)
-  const profTextColor = v => ['#4a4a60','#4a90d9','#00c87a','#ffc400','#ff4da6'][v] || '#4a4a60'
+  const profTextColor = v => ['#4a4a60','#e00080','#ffc400','#4a90d9','#00c87a'][v] || '#4a4a60'
   const profBg       = v => ['#1e1e2a','#0d1a2e11','#0a1f1811','#1f1a0011','#2a0a1a11'][v] || '#1e1e2a'
   const profLabel    = v => ['N/A','Awareness','Working','Advanced','Expert'][v] || 'N/A'
 
@@ -998,10 +998,10 @@ function Heatmap({ assessments, categories, allUsers }) {
   const drillData = drillSkill ? getDrillData(drillSkill.id) : []
 
   const PROF_COLS = [
-    { val: 1, label: 'Awareness', color: '#4a90d9', bg: '#0d1a2e' },
-    { val: 2, label: 'Working',   color: '#00c87a', bg: '#0a1f18' },
-    { val: 3, label: 'Advanced',  color: '#ffc400', bg: '#1f1a00' },
-    { val: 4, label: 'Expert',    color: '#ff4da6', bg: '#2a0a1a' },
+    { val: 1, label: 'Awareness', color: '#e00080', bg: '#2a0a1a' },
+    { val: 2, label: 'Working',   color: '#ffc400', bg: '#1f1a00' },
+    { val: 3, label: 'Advanced',  color: '#4a90d9', bg: '#0d1a2e' },
+    { val: 4, label: 'Expert',    color: '#00c87a', bg: '#0a1f18' },
   ]
 
   return (
@@ -1126,18 +1126,10 @@ function Heatmap({ assessments, categories, allUsers }) {
                         const pct = total > 0 ? n / total : 0
                         return (
                           <td key={p.val} style={{ padding:'8px 12px', textAlign:'center' }}>
-                            {n > 0 ? (
-                              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                                {/* Bar */}
-                                <div style={{ width:64, height:6, borderRadius:99, background:'var(--border)', overflow:'hidden' }}>
-                                  <div style={{ width:`${pct*100}%`, height:'100%', background:p.color, borderRadius:99, transition:'width .3s' }} />
-                                </div>
-                                {/* Count */}
-                                <span style={{ fontSize:13, fontWeight:700, color:p.color }}>{n}</span>
-                              </div>
-                            ) : (
-                              <span style={{ color:'var(--border)', fontSize:16 }}>·</span>
-                            )}
+                            {n > 0
+                              ? <span style={{ fontSize:14, fontWeight:700, color:p.color }}>{n}</span>
+                              : <span style={{ color:'var(--border)', fontSize:16 }}>·</span>
+                            }
                           </td>
                         )
                       })}
@@ -1403,7 +1395,7 @@ function UserProfileModal({ person, assessments, userCerts, categories, certs, o
   const certById     = Object.fromEntries(certs.map(c => [c.id, c]))
 
   const profLabel = v => ['N/A','Awareness','Working','Advanced','Expert'][v] || 'N/A'
-  const profColor = v => ['#4a4a60','#4a90d9','#00c87a','#ffc400','#ff4da6'][v] || '#4a4a60'
+  const profColor = v => ['#4a4a60','#e00080','#ffc400','#4a90d9','#00c87a'][v] || '#4a4a60'
 
   return (
     <div style={{ position:'fixed', inset:0, background:'#000c', zIndex:999, display:'flex', alignItems:'center', justifyContent:'center', padding: 20 }}
@@ -1596,7 +1588,7 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
     }
   })
 
-  const profColor = v => ['#4a4a60','#4a90d9','#00c87a','#ffc400','#ff4da6'][v] || '#4a4a60'
+  const profColor = v => ['#4a4a60','#e00080','#ffc400','#4a90d9','#00c87a'][v] || '#4a4a60'
   const profLabel = v => ['N/A','Awareness','Working','Advanced','Expert'][v] || 'N/A'
 
   const hasFilters = skillFilters.length > 0 || certFilters.length > 0
