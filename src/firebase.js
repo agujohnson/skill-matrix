@@ -118,6 +118,13 @@ export const getInviteCode = async () => {
 export const saveInviteCode = (code) =>
   setDoc(doc(db, 'config', 'settings'), { inviteCode: code }, { merge: true })
 
+export const getAnthropicKey = async () => {
+  const snap = await getDoc(doc(db, 'config', 'settings'))
+  return snap.exists() ? (snap.data().anthropicKey || null) : null
+}
+export const saveAnthropicKey = (key) =>
+  setDoc(doc(db, 'config', 'settings'), { anthropicKey: key }, { merge: true })
+
 // ─── Pending Users (CV Import) ────────────────────────────────────────────────
 export const savePendingUser = (data) =>
   setDoc(doc(db, 'pendingUsers', data.email.toLowerCase()), { ...data, createdAt: Date.now() })

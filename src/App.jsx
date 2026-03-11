@@ -8,7 +8,7 @@ import {
   saveUserCerts, getUserCerts, onUserCertsSnapshot,
   getCategories, saveCategories,
   getCertsLibrary, saveCertsLibrary,
-  getInviteCode, saveInviteCode,
+  getInviteCode, saveInviteCode, getAnthropicKey, saveAnthropicKey,
   savePendingUser, getPendingUserByEmail, deletePendingUser, onPendingUsersSnapshot,
 } from './firebase.js'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -2026,6 +2026,9 @@ function CVScanner({ categories, certs, pendingUsers, onPendingUsersChange }) {
 
   // ── Call Claude API ──────────────────────────────────────────────────────
   const scanWithClaude = async (text) => {
+    const apiKey = await getAnthropicKey()
+    if (!apiKey) throw new Error('Anthropic API key not configured. Go to Admin → Access Code to add it.')
+
     const skillsList = skillsFlat.map(s => `${s.id}|${s.name} (${s.domain})`).join('\n')
     const certsList  = certs.map(c => `${c.id}|${c.name}${c.provider ? ' - ' + c.provider : ''}`).join('\n')
     const practicesList = [
@@ -2073,7 +2076,7 @@ Respond ONLY with a valid JSON object, no markdown, no explanation:
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY || '',
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
@@ -2497,9 +2500,15 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
   const [codeSaved,   setCodeSaved]   = useState(false)
   const [codeLoading, setCodeLoading] = useState(false)
   const [codeVisible, setCodeVisible] = useState(false)
+  const [anthropicKey,    setAnthropicKey]    = useState('')
+  const [anthropicInput,  setAnthropicInput]  = useState('')
+  const [anthropicSaved,  setAnthropicSaved]  = useState(false)
+  const [anthropicLoading,setAnthropicLoading]= useState(false)
+  const [anthropicVisible,setAnthropicVisible]= useState(false)
 
   useEffect(() => {
     getInviteCode().then(c => { if (c) { setInviteCode(c); setCodeInput(c) } })
+    getAnthropicKey().then(k => { if (k) { setAnthropicKey(k); setAnthropicInput(k) } })
   }, [])
 
   const handleSaveCode = async () => {
@@ -2510,6 +2519,16 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
     setCodeSaved(true)
     setCodeLoading(false)
     setTimeout(() => setCodeSaved(false), 2500)
+  }
+
+  const handleSaveAnthropicKey = async () => {
+    if (!anthropicInput.trim()) return
+    setAnthropicLoading(true)
+    await saveAnthropicKey(anthropicInput.trim())
+    setAnthropicKey(anthropicInput.trim())
+    setAnthropicSaved(true)
+    setAnthropicLoading(false)
+    setTimeout(() => setAnthropicSaved(false), 2500)
   }
 
   const COLORS = ['#2563eb','#7c3aed','#0891b2','#059669','#d97706','#dc2626','#0d9488','#9333ea']
@@ -2788,6 +2807,46 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
               • Share it via a private Slack message or email — not in public channels<br />
               • Rotate it periodically or after someone leaves the company<br />
               • Changing the code does not affect existing logged-in users
+            </div>
+          </Card>
+
+          {/* Anthropic API Key */}
+          <Card style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 12, background: '#e0008018', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 22 }}>🤖</div>
+              <div>
+                <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 18, marginBottom: 4 }}>Anthropic API Key</div>
+                <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+                  Required for the CV Import feature. Get your key from <span style={{ color: 'var(--accent)' }}>console.anthropic.com</span> → API Keys.
+                </p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>API Key</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <input
+                    type={anthropicVisible ? 'text' : 'password'}
+                    value={anthropicInput}
+                    onChange={e => setAnthropicInput(e.target.value)}
+                    placeholder="sk-ant-api03-..."
+                    style={{ width: '100%', padding: '10px 44px 10px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--panel2)', color: 'var(--ink)', fontSize: 13, fontFamily: 'Courier New, monospace', outline: 'none', boxSizing: 'border-box' }}
+                    onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                    onKeyDown={e => e.key === 'Enter' && handleSaveAnthropicKey()}
+                  />
+                  <button onClick={() => setAnthropicVisible(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16, padding: 4 }}>
+                    {anthropicVisible ? '🙈' : '👁️'}
+                  </button>
+                </div>
+                <Btn onClick={handleSaveAnthropicKey} disabled={anthropicLoading || !anthropicInput.trim()} style={{ whiteSpace: 'nowrap' }}>
+                  {anthropicLoading ? 'Saving…' : anthropicSaved ? '✓ Saved!' : 'Save Key'}
+                </Btn>
+              </div>
+              {anthropicKey
+                ? <p style={{ fontSize: 12, color: '#00d084' }}>✓ API key is set — CV Import is ready to use.</p>
+                : <p style={{ fontSize: 12, color: 'var(--danger)' }}>⚠️ No API key set — CV Import will not work until you save one.</p>
+              }
             </div>
           </Card>
         </div>
