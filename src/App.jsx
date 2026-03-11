@@ -2568,7 +2568,7 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
       const skillRange = XLSX.utils.decode_range(skillSheet['!ref'])
       for (let C = skillRange.s.c; C <= skillRange.e.c; C++) {
         const cell = skillSheet[XLSX.utils.encode_cell({ r: 0, c: C })]
-        if (cell) cell.s = { font: { bold: true }, fill: { fgColor: { rgb: 'E00080' } }, font: { bold: true, color: { rgb: 'FFFFFF' } } }
+        if (cell) cell.s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: 'E00080' } } }
       }
       XLSX.utils.book_append_sheet(wb, skillSheet, 'Skills Matrix')
 

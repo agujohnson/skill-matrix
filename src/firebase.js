@@ -66,9 +66,10 @@ export const deleteUserData = async (uid) => {
 }
 
 // ─── Assessments ──────────────────────────────────────────────────────────────
+export const saveAssessment = (userId, skillId, data) =>
+  setDoc(doc(db, 'assessments', userId), { [skillId]: data }, { merge: true })
 export const saveAssessmentsBulk = (userId, assessmentsObj) =>
   setDoc(doc(db, 'assessments', userId), assessmentsObj)
-
 
 export const getAssessments = async (userId) => {
   const snap = await getDoc(doc(db, 'assessments', userId))
