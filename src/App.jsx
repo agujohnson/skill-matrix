@@ -126,6 +126,7 @@ const PRACTICES = [
   'AI Engineering',
   'Cloud Engineering',
   'Core Network Eng',
+  'HR/Recruiting',
   'Network Operations Eng',
   'RAN Network Eng',
   'Software Engineering',
