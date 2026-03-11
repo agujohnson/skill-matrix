@@ -4,11 +4,12 @@ import {
   getUserProfile, createUserProfile,
   onUsersSnapshot, updateUserProfile, deleteUserData,
   submitSuggestion as fbSubmitSuggestion, onSuggestionsSnapshot, approveSuggestion, rejectSuggestion,
-  saveAssessment, getAssessments, onAssessmentsSnapshot,
+  saveAssessment, saveAssessmentsBulk, getAssessments, onAssessmentsSnapshot,
   saveUserCerts, getUserCerts, onUserCertsSnapshot,
   getCategories, saveCategories,
   getCertsLibrary, saveCertsLibrary,
   getInviteCode, saveInviteCode,
+  savePendingUser, getPendingUserByEmail, deletePendingUser, onPendingUsersSnapshot,
 } from './firebase.js'
 import { onAuthStateChanged } from 'firebase/auth'
 
@@ -44,6 +45,7 @@ const STYLE = `
 
   @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
   @keyframes glow { 0%,100% { box-shadow: 0 0 20px #e0008033; } 50% { box-shadow: 0 0 40px #e0008066; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .fadeUp { animation: fadeUp .4s cubic-bezier(.16,1,.3,1) both; }
   select { color: #f0f0f5 !important; }
   select option { background: #1a1a24 !important; color: #f0f0f5 !important; }
@@ -227,6 +229,7 @@ export default function App() {
   const [userCerts, setUserCerts]     = useState({})
   const [suggestions, setSuggestions] = useState([])
   const [allUsers, setAllUsers]       = useState([])
+  const [pendingUsers, setPendingUsers] = useState([])
 
   // Auth listener
   useEffect(() => {
@@ -257,7 +260,8 @@ export default function App() {
       const unsub2 = onUserCertsSnapshot(setUserCerts)
       const unsub3 = onSuggestionsSnapshot(setSuggestions)
       const unsub4 = onUsersSnapshot(setAllUsers)
-      return () => { unsub1(); unsub2(); unsub3(); unsub4() }
+      const unsub5 = onPendingUsersSnapshot(setPendingUsers)
+      return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5() }
     } else {
       getAssessments(authUser.uid).then(a => setAssessments({ [authUser.uid]: a }))
       getUserCerts(authUser.uid).then(c => setUserCerts({ [authUser.uid]: c }))
@@ -303,6 +307,7 @@ export default function App() {
     setUserCerts: handleSetUserCerts,
     suggestions: suggestions || [], setSuggestions,
     allUsers: allUsers || [], setAllUsers,
+    pendingUsers: pendingUsers || [], setPendingUsers,
     onLogout: handleLogout,
   }
 
@@ -354,12 +359,28 @@ function Login() {
         return setErr('Invalid access code. Please check with your administrator.')
       }
       const cred = await register(email, pass)
-      await createUserProfile(cred.user.uid, {
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        role,
-        team: team.trim(),
-      })
+      // Check if a pending CV-imported profile exists for this email
+      const pending = await getPendingUserByEmail(email.trim().toLowerCase())
+      if (pending) {
+        await createUserProfile(cred.user.uid, {
+          name: name.trim() || pending.name,
+          email: email.trim().toLowerCase(),
+          role: pending.role || role,
+          team: pending.team || team.trim(),
+        })
+        if (pending.assessments && Object.keys(pending.assessments).length > 0)
+          await saveAssessmentsBulk(cred.user.uid, pending.assessments)
+        if (pending.certs && pending.certs.length > 0)
+          await saveUserCerts(cred.user.uid, pending.certs)
+        await deletePendingUser(email.trim().toLowerCase())
+      } else {
+        await createUserProfile(cred.user.uid, {
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          role,
+          team: team.trim(),
+        })
+      }
     } catch (e) {
       if (e.code === 'auth/email-already-in-use') setErr('An account with this email already exists.')
       else if (e.code === 'auth/invalid-email')   setErr('Please enter a valid email address.')
@@ -1938,6 +1959,413 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
 }
 
 
+// ─── CV Scanner ───────────────────────────────────────────────────────────────
+function CVScanner({ categories, certs, pendingUsers, onPendingUsersChange }) {
+  const [step, setStep]           = useState('upload')  // upload | scanning | review | done
+  const [dragOver, setDragOver]   = useState(false)
+  const [scanning, setScanning]   = useState(false)
+  const [scanError, setScanError] = useState('')
+  const [extracted, setExtracted] = useState(null)   // parsed result from Claude
+  const [saving, setSaving]       = useState(false)
+  const [activeTab, setActiveTab] = useState('import') // import | pending
+
+  const skillsFlat = categories.flatMap(c =>
+    c.skills.map(s => ({ id: s.id, name: s.name, domain: c.name }))
+  )
+
+  // ── Extract text from file ───────────────────────────────────────────────
+  const extractText = async (file) => {
+    const ext = file.name.split('.').pop().toLowerCase()
+    if (ext === 'pdf') {
+      // Use pdf.js via CDN
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = async (e) => {
+          try {
+            const typedArray = new Uint8Array(e.target.result)
+            const pdfjsLib = window['pdfjs-dist/build/pdf']
+            if (!pdfjsLib) {
+              // Fallback: read as binary and extract readable text
+              const text = new TextDecoder('utf-8', { fatal: false }).decode(typedArray)
+              const readable = text.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim()
+              resolve(readable.substring(0, 12000))
+              return
+            }
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+            const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise
+            let fullText = ''
+            for (let i = 1; i <= Math.min(pdf.numPages, 10); i++) {
+              const page = await pdf.getPage(i)
+              const content = await page.getTextContent()
+              fullText += content.items.map(item => item.str).join(' ') + '\n'
+            }
+            resolve(fullText.substring(0, 12000))
+          } catch (err) { reject(err) }
+        }
+        reader.onerror = reject
+        reader.readAsArrayBuffer(file)
+      })
+    } else if (ext === 'docx' || ext === 'doc') {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = async (e) => {
+          try {
+            const mammoth = window.mammoth
+            if (!mammoth) throw new Error('mammoth not loaded')
+            const result = await mammoth.extractRawText({ arrayBuffer: e.target.result })
+            resolve(result.value.substring(0, 12000))
+          } catch (err) { reject(err) }
+        }
+        reader.onerror = reject
+        reader.readAsArrayBuffer(file)
+      })
+    } else {
+      throw new Error('Unsupported file type. Please upload a PDF or Word document.')
+    }
+  }
+
+  // ── Call Claude API ──────────────────────────────────────────────────────
+  const scanWithClaude = async (text) => {
+    const skillsList = skillsFlat.map(s => `${s.id}|${s.name} (${s.domain})`).join('\n')
+    const certsList  = certs.map(c => `${c.id}|${c.name}${c.provider ? ' - ' + c.provider : ''}`).join('\n')
+    const practicesList = [
+      'AI Engineering','Cloud Engineering','Core Network Eng','HR/Recruiting',
+      'Network Operations Eng','RAN Network Eng','Software Engineering',
+      'Testing Engineering','Transport Network Eng','Voice and Signaling Eng'
+    ].join(', ')
+
+    const prompt = `You are analyzing a CV/Resume to extract structured data for a skills matrix platform.
+
+AVAILABLE SKILLS (format: id|name (domain)):
+${skillsList}
+
+AVAILABLE CERTIFICATIONS (format: id|name):
+${certsList}
+
+AVAILABLE PRACTICES: ${practicesList}
+
+CV TEXT:
+${text}
+
+INSTRUCTIONS:
+- Extract the person's full name and email address
+- Suggest the most appropriate practice from the AVAILABLE PRACTICES list
+- Map their experience to skills from AVAILABLE SKILLS only. Use proficiency: 1=Awareness, 2=Working, 3=Advanced, 4=Expert. Only include skills you are confident about. Do NOT invent skill IDs.
+- Map their certifications to AVAILABLE CERTIFICATIONS only. Only include certs you are confident about.
+- If you are unsure about any skill or cert mapping, omit it rather than guess.
+
+Respond ONLY with a valid JSON object, no markdown, no explanation:
+{
+  "name": "Full Name",
+  "email": "email@example.com or null",
+  "suggestedPractice": "one of the available practices",
+  "practiceReason": "one sentence explanation",
+  "skills": [
+    {"skillId": "exact_id_from_list", "skillName": "name", "proficiency": 1-4, "confidence": "high|medium"}
+  ],
+  "certifications": [
+    {"certId": "exact_id_from_list", "certName": "name", "status": "Earned", "confidence": "high|medium"}
+  ],
+  "summary": "2-3 sentence professional summary based on the CV"
+}`
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY || '',
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    })
+
+    if (!response.ok) {
+      const err = await response.json()
+      throw new Error(err.error?.message || 'Claude API error')
+    }
+
+    const data = await response.json()
+    const raw = data.content.find(b => b.type === 'text')?.text || ''
+    const clean = raw.replace(/```json|```/g, '').trim()
+    return JSON.parse(clean)
+  }
+
+  // ── Handle file drop / select ────────────────────────────────────────────
+  const processFile = async (file) => {
+    setScanError('')
+    setStep('scanning')
+    setScanning(true)
+    try {
+      const text = await extractText(file)
+      if (!text || text.length < 100) throw new Error('Could not extract enough text from this file. Try a different format.')
+      const result = await scanWithClaude(text)
+      // Only keep high/medium confidence items
+      result.skills = (result.skills || []).filter(s => s.confidence !== 'low' && skillsFlat.find(sf => sf.id === s.skillId))
+      result.certifications = (result.certifications || []).filter(c => c.confidence !== 'low' && certs.find(cf => cf.id === c.certId))
+      setExtracted(result)
+      setStep('review')
+    } catch (e) {
+      setScanError(e.message || 'Scan failed. Please try again.')
+      setStep('upload')
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault(); setDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) processFile(file)
+  }
+  const handleFileInput = (e) => {
+    const file = e.target.files[0]
+    if (file) processFile(file)
+  }
+
+  // ── Save to Firestore as pending user ────────────────────────────────────
+  const handleSave = async () => {
+    if (!extracted) return
+    setSaving(true)
+    try {
+      const assessmentsObj = {}
+      extracted.skills.forEach(s => {
+        assessmentsObj[s.skillId] = { prof: s.proficiency, interest: 'Low', updatedAt: Date.now() }
+      })
+      const certsArr = extracted.certifications.map(c => ({
+        certId: c.certId, status: c.status || 'Earned',
+        acquiredDate: null, expiryDate: null, plannedYear: null, plannedQuarter: null,
+      }))
+      await savePendingUser({
+        name: extracted.name,
+        email: (extracted.email || '').toLowerCase(),
+        role: 'contributor',
+        team: extracted.suggestedPractice,
+        assessments: assessmentsObj,
+        certs: certsArr,
+        summary: extracted.summary,
+        scannedAt: Date.now(),
+      })
+      setStep('done')
+      setExtracted(null)
+    } catch (e) {
+      setScanError('Failed to save. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const reset = () => { setStep('upload'); setExtracted(null); setScanError('') }
+
+  const profLabel = v => ['','Awareness','Working','Advanced','Expert'][v] || ''
+  const profColor = v => ['','#e00080','#ffc400','#4a90d9','#00c87a'][v] || '#4a4a60'
+
+  const tabBtn = (key, label) => (
+    <button key={key} onClick={() => setActiveTab(key)} style={{
+      padding:'8px 18px', borderRadius:8, border:'none', cursor:'pointer',
+      fontFamily:'Space Grotesk, sans-serif', fontWeight:600, fontSize:13,
+      background: activeTab===key ? 'var(--grad)' : 'transparent',
+      color: activeTab===key ? '#fff' : 'var(--muted)',
+      boxShadow: activeTab===key ? 'var(--glow)' : 'none',
+    }}>{label}</button>
+  )
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+      <div style={{ display:'flex', gap:4, padding:'4px', background:'var(--panel)', borderRadius:10, border:'1px solid var(--border)', alignSelf:'flex-start' }}>
+        {tabBtn('import', '📄 Scan CV')}
+        {tabBtn('pending', `⏳ Pending (${(pendingUsers||[]).length})`)}
+      </div>
+
+      {/* ── SCAN TAB ── */}
+      {activeTab === 'import' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+          {/* Upload step */}
+          {step === 'upload' && (
+            <>
+              <div
+                onDragOver={e=>{e.preventDefault();setDragOver(true)}}
+                onDragLeave={()=>setDragOver(false)}
+                onDrop={handleDrop}
+                style={{
+                  border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
+                  borderRadius:16, padding:'48px 32px', textAlign:'center',
+                  background: dragOver ? '#e0008008' : 'var(--panel)',
+                  transition:'all .2s', cursor:'pointer',
+                }}
+                onClick={() => document.getElementById('cv-file-input').click()}
+              >
+                <div style={{ fontSize:40, marginBottom:12 }}>📄</div>
+                <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:16, marginBottom:8 }}>
+                  Drop a CV here or click to browse
+                </div>
+                <div style={{ fontSize:13, color:'var(--muted)' }}>Supports PDF and Word (.docx) files</div>
+                <input id="cv-file-input" type="file" accept=".pdf,.doc,.docx" style={{ display:'none' }} onChange={handleFileInput} />
+              </div>
+              {scanError && (
+                <div style={{ padding:'12px 16px', borderRadius:10, background:'#ff444418', border:'1px solid #ff444444', color:'#ff6666', fontSize:13 }}>
+                  ⚠️ {scanError}
+                </div>
+              )}
+              <div style={{ padding:'16px 20px', borderRadius:12, background:'var(--panel2)', border:'1px solid var(--border)', fontSize:13, color:'var(--muted)', lineHeight:1.7 }}>
+                <strong style={{ color:'var(--ink)' }}>How it works:</strong> Claude reads the CV, maps experience to your skills library, and creates a pending profile. When this person registers using the same email, their profile and skills are automatically assigned to their account.
+              </div>
+            </>
+          )}
+
+          {/* Scanning step */}
+          {step === 'scanning' && (
+            <div style={{ textAlign:'center', padding:'64px 32px', display:'flex', flexDirection:'column', alignItems:'center', gap:20 }}>
+              <div style={{ width:56, height:56, borderRadius:'50%', border:'3px solid var(--border)', borderTopColor:'var(--accent)', animation:'spin 0.8s linear infinite' }} />
+              <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:16 }}>Scanning CV with Claude…</div>
+              <div style={{ fontSize:13, color:'var(--muted)' }}>Extracting skills, certifications and profile data</div>
+            </div>
+          )}
+
+          {/* Review step */}
+          {step === 'review' && extracted && (
+            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+              {/* Header */}
+              <div style={{ display:'flex', alignItems:'center', gap:16, padding:'20px 24px', background:'var(--panel2)', borderRadius:14, border:'1px solid var(--border)' }}>
+                <Avatar name={extracted.name || '?'} size={52} />
+                <div style={{ flex:1 }}>
+                  <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:800, fontSize:20 }}>{extracted.name || 'Unknown Name'}</div>
+                  <div style={{ fontSize:13, color:'var(--muted)', marginTop:2 }}>{extracted.email || 'No email found — add manually before saving'}</div>
+                  {extracted.summary && <div style={{ fontSize:13, color:'var(--muted)', marginTop:6, lineHeight:1.5 }}>{extracted.summary}</div>}
+                </div>
+              </div>
+
+              {/* Practice suggestion */}
+              <Card style={{ padding:'16px 20px' }}>
+                <div style={{ fontSize:12, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:10 }}>Suggested Practice</div>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:15, color:'var(--accent)' }}>{extracted.suggestedPractice}</span>
+                  {extracted.practiceReason && <span style={{ fontSize:12, color:'var(--muted)' }}>— {extracted.practiceReason}</span>}
+                </div>
+                <div style={{ marginTop:10 }}>
+                  <label style={{ fontSize:12, color:'var(--muted)', fontWeight:600, display:'block', marginBottom:6 }}>Override practice:</label>
+                  <select value={extracted.suggestedPractice}
+                    onChange={e => setExtracted(x => ({ ...x, suggestedPractice: e.target.value }))}
+                    style={{ padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:13 }}>
+                    {['AI Engineering','Cloud Engineering','Core Network Eng','HR/Recruiting','Network Operations Eng','RAN Network Eng','Software Engineering','Testing Engineering','Transport Network Eng','Voice and Signaling Eng'].map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+              </Card>
+
+              {/* Email override if missing */}
+              {!extracted.email && (
+                <Card style={{ padding:'16px 20px', border:'1px solid #ffc40044' }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:'#ffc400', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>⚠️ No email found in CV</div>
+                  <p style={{ fontSize:13, color:'var(--muted)', marginBottom:10 }}>The profile won't auto-link when this person registers without an email. Add it manually:</p>
+                  <input placeholder="person@company.com" value={extracted.email || ''}
+                    onChange={e => setExtracted(x => ({ ...x, email: e.target.value }))}
+                    style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:13, boxSizing:'border-box' }} />
+                </Card>
+              )}
+
+              {/* Skills */}
+              <Card style={{ padding:'16px 20px' }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em' }}>
+                    Skills Identified ({extracted.skills.length})
+                  </div>
+                  <span style={{ fontSize:11, color:'var(--muted)' }}>Click × to remove any false positives</span>
+                </div>
+                {extracted.skills.length === 0
+                  ? <div style={{ fontSize:13, color:'var(--muted)', textAlign:'center', padding:16 }}>No skills matched to library</div>
+                  : <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                    {extracted.skills.map((s, i) => (
+                      <div key={s.skillId} style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 8px 5px 12px', borderRadius:99, border:`1px solid ${profColor(s.proficiency)}44`, background:profColor(s.proficiency)+'18' }}>
+                        <span style={{ fontSize:12, fontWeight:600, color:profColor(s.proficiency) }}>{s.skillName}</span>
+                        <span style={{ fontSize:11, color:profColor(s.proficiency), opacity:.8 }}>· {profLabel(s.proficiency)}</span>
+                        <button onClick={() => setExtracted(x => ({ ...x, skills: x.skills.filter((_,j)=>j!==i) }))}
+                          style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:14, lineHeight:1, padding:'0 2px' }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                }
+              </Card>
+
+              {/* Certifications */}
+              <Card style={{ padding:'16px 20px' }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em' }}>
+                    Certifications Identified ({extracted.certifications.length})
+                  </div>
+                  <span style={{ fontSize:11, color:'var(--muted)' }}>Click × to remove any false positives</span>
+                </div>
+                {extracted.certifications.length === 0
+                  ? <div style={{ fontSize:13, color:'var(--muted)', textAlign:'center', padding:16 }}>No certifications matched to library</div>
+                  : <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                    {extracted.certifications.map((c, i) => (
+                      <div key={c.certId} style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 8px 5px 12px', borderRadius:99, border:'1px solid #00d08444', background:'#00d08418' }}>
+                        <span style={{ fontSize:12, fontWeight:600, color:'#00d084' }}>🏅 {c.certName}</span>
+                        <button onClick={() => setExtracted(x => ({ ...x, certifications: x.certifications.filter((_,j)=>j!==i) }))}
+                          style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:14, lineHeight:1, padding:'0 2px' }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                }
+              </Card>
+
+              {/* Actions */}
+              <div style={{ display:'flex', gap:10 }}>
+                <Btn onClick={handleSave} disabled={saving || !extracted.name} style={{ flex:1, justifyContent:'center' }}>
+                  {saving ? 'Saving…' : '✓ Save to Pending Users'}
+                </Btn>
+                <Btn variant="secondary" onClick={reset} style={{ justifyContent:'center' }}>Scan Another</Btn>
+              </div>
+            </div>
+          )}
+
+          {/* Done step */}
+          {step === 'done' && (
+            <div style={{ textAlign:'center', padding:'48px 32px', display:'flex', flexDirection:'column', alignItems:'center', gap:16 }}>
+              <div style={{ width:64, height:64, borderRadius:'50%', background:'#00d08418', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28 }}>✓</div>
+              <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:800, fontSize:18 }}>Profile saved!</div>
+              <p style={{ fontSize:13, color:'var(--muted)', maxWidth:400 }}>
+                When this person registers with their email, their skills and certifications will be automatically assigned to their account.
+              </p>
+              <Btn onClick={reset}>Scan Another CV</Btn>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── PENDING USERS TAB ── */}
+      {activeTab === 'pending' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          {(!pendingUsers || pendingUsers.length === 0)
+            ? <div style={{ textAlign:'center', padding:48, color:'var(--muted)', fontSize:14 }}>No pending profiles. Scan a CV to create one.</div>
+            : pendingUsers.map(u => (
+              <Card key={u.id} style={{ padding:'16px 20px', display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+                <Avatar name={u.name || '?'} size={40} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:14 }}>{u.name}</div>
+                  <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>{u.email || 'No email'} · {u.team}</div>
+                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>
+                    {Object.keys(u.assessments||{}).length} skills · {(u.certs||[]).length} certs · scanned {new Date(u.scannedAt).toLocaleDateString()}
+                  </div>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontSize:11, padding:'3px 10px', borderRadius:99, background:'#ffc40018', color:'#ffc400', fontWeight:600, border:'1px solid #ffc40044' }}>Awaiting registration</span>
+                  <button onClick={async () => { await deletePendingUser(u.email); onPendingUsersChange() }}
+                    style={{ background:'none', border:'1px solid #ff444444', borderRadius:7, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'#ff6666' }}>Remove</button>
+                </div>
+              </Card>
+            ))
+          }
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Suggestions Panel (Manager) ─────────────────────────────────────────────
 function SuggestionsPanel({ suggestions = [], categories, setCategories, certs, setCerts }) {
   const [busy, setBusy] = useState({})
@@ -2055,7 +2483,7 @@ function SuggestionsPanel({ suggestions = [], categories, setCategories, certs, 
   )
 }
 
-function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, assessments, userCerts, user }) {
+function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, assessments, userCerts, user, pendingUsers, setPendingUsers }) {
   const [newCatName,  setNewCatName]  = useState('')
   const [newSkillName,setNewSkillName]= useState('')
   const [selCat,      setSelCat]      = useState(null)
@@ -2223,6 +2651,9 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
         <button style={tabStyle('skills')} onClick={() => setAdminTab('skills')}>Skills Library</button>
         <button style={tabStyle('certs')}  onClick={() => setAdminTab('certs')}>Certifications</button>
         {user?.role === 'manager' && (
+          <button style={tabStyle('cv')} onClick={() => setAdminTab('cv')}>CV Import</button>
+        )}
+        {user?.role === 'manager' && (
           <button style={tabStyle('access')} onClick={() => setAdminTab('access')}>Access Code</button>
         )}
         {user?.role === 'manager' && (
@@ -2291,6 +2722,15 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
             <Btn onClick={addCert} small>Add Certification</Btn>
           </Card>
         </div>
+      )}
+
+      {adminTab === 'cv' && user?.role === 'manager' && (
+        <CVScanner
+          categories={categories}
+          certs={certs}
+          pendingUsers={pendingUsers}
+          onPendingUsersChange={() => {}}
+        />
       )}
 
       {adminTab === 'access' && user?.role === 'manager' && (

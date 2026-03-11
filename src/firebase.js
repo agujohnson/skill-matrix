@@ -66,8 +66,10 @@ export const deleteUserData = async (uid) => {
 }
 
 // ─── Assessments ──────────────────────────────────────────────────────────────
-export const saveAssessment = (userId, skillId, data) =>
-  setDoc(doc(db, 'assessments', userId), { [skillId]: data }, { merge: true })
+export const saveAssessmentsBulk = (userId, assessmentsObj) =>
+  setDoc(doc(db, 'assessments', userId), assessmentsObj)
+
+
 export const getAssessments = async (userId) => {
   const snap = await getDoc(doc(db, 'assessments', userId))
   return snap.exists() ? snap.data() : {}
@@ -114,6 +116,20 @@ export const getInviteCode = async () => {
 }
 export const saveInviteCode = (code) =>
   setDoc(doc(db, 'config', 'settings'), { inviteCode: code }, { merge: true })
+
+// ─── Pending Users (CV Import) ────────────────────────────────────────────────
+export const savePendingUser = (data) =>
+  setDoc(doc(db, 'pendingUsers', data.email.toLowerCase()), { ...data, createdAt: Date.now() })
+export const getPendingUserByEmail = async (email) => {
+  const snap = await getDoc(doc(db, 'pendingUsers', email.toLowerCase()))
+  return snap.exists() ? snap.data() : null
+}
+export const deletePendingUser = (email) =>
+  deleteDoc(doc(db, 'pendingUsers', email.toLowerCase()))
+export const onPendingUsersSnapshot = (callback) =>
+  onSnapshot(collection(db, 'pendingUsers'), snap =>
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  )
 
 // ─── Suggestions ──────────────────────────────────────────────────────────────
 export const submitSuggestion = (data) =>
