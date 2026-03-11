@@ -97,6 +97,14 @@ export const getCertsLibrary = async () => {
 }
 export const saveCertsLibrary = (list) => setDoc(doc(db, 'config', 'certsLibrary'), { list })
 
+// ─── Invite Code ─────────────────────────────────────────────────────────────
+export const getInviteCode = async () => {
+  const snap = await getDoc(doc(db, 'config', 'settings'))
+  return snap.exists() ? (snap.data().inviteCode || null) : null
+}
+export const saveInviteCode = (code) =>
+  setDoc(doc(db, 'config', 'settings'), { inviteCode: code }, { merge: true })
+
 // ─── Suggestions ──────────────────────────────────────────────────────────────
 export const submitSuggestion = (data) =>
   addDoc(collection(db, 'suggestions'), { ...data, status: 'pending', createdAt: Date.now() })

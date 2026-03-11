@@ -8,6 +8,7 @@ import {
   saveUserCerts, getUserCerts, onUserCertsSnapshot,
   getCategories, saveCategories,
   getCertsLibrary, saveCertsLibrary,
+  getInviteCode, saveInviteCode,
 } from './firebase.js'
 import { onAuthStateChanged } from 'firebase/auth'
 
@@ -321,6 +322,7 @@ function Login() {
   const [pass2, setPass2]     = useState('')
   const [team, setTeam]       = useState('')
   const [role, setRole]       = useState('contributor')
+  const [code, setCode]       = useState('')
   const [err, setErr]         = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -334,11 +336,22 @@ function Login() {
   const handleSignup = async () => {
     setErr('')
     if (!name.trim())         return setErr('Please enter your full name.')
-    if (!team.trim())         return setErr('Please enter your practice / team.')
+    if (!team.trim())         return setErr('Please select your practice / team.')
+    if (!code.trim())         return setErr('Please enter the company access code.')
     if (pass !== pass2)       return setErr('Passwords do not match.')
     if (pass.length < 6)      return setErr('Password must be at least 6 characters.')
     setLoading(true)
     try {
+      // Verify invite code against Firestore before creating the account
+      const storedCode = await getInviteCode()
+      if (!storedCode) {
+        setLoading(false)
+        return setErr('Registration is currently disabled. Contact your administrator.')
+      }
+      if (code.trim().toLowerCase() !== storedCode.toLowerCase()) {
+        setLoading(false)
+        return setErr('Invalid access code. Please check with your administrator.')
+      }
       const cred = await register(email, pass)
       await createUserProfile(cred.user.uid, {
         name: name.trim(),
@@ -346,7 +359,6 @@ function Login() {
         role,
         team: team.trim(),
       })
-      // onAuthStateChanged will pick up the new user automatically
     } catch (e) {
       if (e.code === 'auth/email-already-in-use') setErr('An account with this email already exists.')
       else if (e.code === 'auth/invalid-email')   setErr('Please enter a valid email address.')
@@ -451,6 +463,10 @@ function Login() {
               </div>
               <Input label="Password" type="password" value={pass} onChange={setPass} placeholder="Min. 6 characters" />
               <Input label="Confirm Password" type="password" value={pass2} onChange={setPass2} placeholder="Repeat password" />
+              <div style={{ borderTop:'1px solid var(--border)', paddingTop:14 }}>
+                <Input label="Company Access Code" value={code} onChange={setCode} placeholder="Enter the code shared by your admin" />
+                <p style={{ fontSize:11, color:'var(--muted)', marginTop:5 }}>Ask your Practice Manager for the access code.</p>
+              </div>
 
               {err && <p style={{ fontSize: 13, color: 'var(--danger)' }}>{err}</p>}
 
@@ -1926,6 +1942,25 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
   const [newCertLvl,  setNewCertLvl]  = useState('')
   const [adminTab,    setAdminTab]    = useState('skills')
   const [exporting,   setExporting]   = useState(false)
+  const [inviteCode,  setInviteCode]  = useState('')
+  const [codeInput,   setCodeInput]   = useState('')
+  const [codeSaved,   setCodeSaved]   = useState(false)
+  const [codeLoading, setCodeLoading] = useState(false)
+  const [codeVisible, setCodeVisible] = useState(false)
+
+  useEffect(() => {
+    getInviteCode().then(c => { if (c) { setInviteCode(c); setCodeInput(c) } })
+  }, [])
+
+  const handleSaveCode = async () => {
+    if (!codeInput.trim()) return
+    setCodeLoading(true)
+    await saveInviteCode(codeInput.trim())
+    setInviteCode(codeInput.trim())
+    setCodeSaved(true)
+    setCodeLoading(false)
+    setTimeout(() => setCodeSaved(false), 2500)
+  }
 
   const COLORS = ['#2563eb','#7c3aed','#0891b2','#059669','#d97706','#dc2626','#0d9488','#9333ea']
 
@@ -2066,6 +2101,9 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
         <button style={tabStyle('skills')} onClick={() => setAdminTab('skills')}>Skills Library</button>
         <button style={tabStyle('certs')}  onClick={() => setAdminTab('certs')}>Certifications</button>
         {user?.role === 'manager' && (
+          <button style={tabStyle('access')} onClick={() => setAdminTab('access')}>Access Code</button>
+        )}
+        {user?.role === 'manager' && (
           <button style={tabStyle('export')} onClick={() => setAdminTab('export')}>Export Data</button>
         )}
       </div>
@@ -2129,6 +2167,66 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
               <Input label="Level"    value={newCertLvl}  onChange={setNewCertLvl}  placeholder="e.g. Professional" />
             </div>
             <Btn onClick={addCert} small>Add Certification</Btn>
+          </Card>
+        </div>
+      )}
+
+      {adminTab === 'access' && user?.role === 'manager' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 540 }}>
+          <Card style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 12, background: '#e0008018', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 22 }}>🔐</div>
+              <div>
+                <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 18, marginBottom: 4 }}>Company Access Code</div>
+                <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+                  New users must enter this code when creating an account. Share it only with employees you want to grant access. Change it anytime to invalidate old codes — existing users are unaffected.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Current Access Code</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <input
+                    type={codeVisible ? 'text' : 'password'}
+                    value={codeInput}
+                    onChange={e => setCodeInput(e.target.value)}
+                    placeholder="Set an access code…"
+                    style={{ width: '100%', padding: '10px 44px 10px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--panel2)', color: 'var(--ink)', fontSize: 15, fontFamily: 'Courier New, monospace', outline: 'none', boxSizing: 'border-box' }}
+                    onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                    onKeyDown={e => e.key === 'Enter' && handleSaveCode()}
+                  />
+                  <button onClick={() => setCodeVisible(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16, padding: 4 }}>
+                    {codeVisible ? '🙈' : '👁️'}
+                  </button>
+                </div>
+                <Btn onClick={handleSaveCode} disabled={codeLoading || !codeInput.trim()} style={{ whiteSpace: 'nowrap' }}>
+                  {codeLoading ? 'Saving…' : codeSaved ? '✓ Saved!' : 'Save Code'}
+                </Btn>
+              </div>
+              {inviteCode && (
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>
+                  A code is currently set. Users must enter it exactly (case-insensitive) when registering.
+                </p>
+              )}
+              {!inviteCode && (
+                <p style={{ fontSize: 12, color: 'var(--danger)' }}>
+                  ⚠️ No access code is set — registration is currently blocked for all new users.
+                </p>
+              )}
+            </div>
+          </Card>
+
+          <Card style={{ padding: '20px 24px', background: '#1f1a00', border: '1px solid #ffc40033' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: '#ffc400', marginBottom: 8 }}>💡 Tips</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
+              • Use something memorable but not guessable (e.g. <span style={{ fontFamily: 'monospace', color: 'var(--ink)' }}>byond-skills-2025</span>)<br />
+              • Share it via a private Slack message or email — not in public channels<br />
+              • Rotate it periodically or after someone leaves the company<br />
+              • Changing the code does not affect existing logged-in users
+            </div>
           </Card>
         </div>
       )}
