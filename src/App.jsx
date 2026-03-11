@@ -2027,6 +2027,7 @@ function CVScanner({ categories, certs, pendingUsers, onPendingUsersChange }) {
   // ── Call Claude API ──────────────────────────────────────────────────────
   const scanWithClaude = async (text) => {
     const apiKey = await getAnthropicKey()
+    console.log('API key found:', apiKey ? `${apiKey.substring(0,10)}...` : 'NONE')
     if (!apiKey) throw new Error('Anthropic API key not configured. Go to Admin → Access Code to add it.')
 
     const skillsList = skillsFlat.map(s => `${s.id}|${s.name} (${s.domain})`).join('\n')
@@ -2089,7 +2090,7 @@ Respond ONLY with a valid JSON object, no markdown, no explanation:
 
     if (!response.ok) {
       const err = await response.json()
-      throw new Error(err.error?.message || 'Claude API error')
+      throw new Error(err.error?.message || `API error ${response.status}: ${JSON.stringify(err)}`)
     }
 
     const data = await response.json()
