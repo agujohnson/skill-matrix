@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   auth, login, register, loginWithMicrosoft, logout,
   getUserProfile, createUserProfile,
-  onUsersSnapshot, updateUserProfile,
+  onUsersSnapshot, updateUserProfile, deleteUserData,
   submitSuggestion as fbSubmitSuggestion, onSuggestionsSnapshot, approveSuggestion, rejectSuggestion,
   saveAssessment, getAssessments, onAssessmentsSnapshot,
   saveUserCerts, getUserCerts, onUserCertsSnapshot,
@@ -1520,17 +1520,18 @@ function UserProfileModal({ person, assessments, userCerts, categories, certs, o
 }
 
 function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user: currentUser }) {
-  const [mode, setMode]       = useState('roster')   // 'roster' | 'search'
-  const [search, setSearch]   = useState('')
-  const [selected, setSelected] = useState(null)
-  const [editing, setEditing] = useState(null)
-  const [editRole, setEditRole] = useState('')
-  const [editTeam, setEditTeam] = useState('')
-  const [saving, setSaving]   = useState(false)
+  const [mode, setMode]           = useState('roster')
+  const [search, setSearch]       = useState('')
+  const [selected, setSelected]   = useState(null)
+  const [editUser, setEditUser]   = useState(null)   // user being edited in modal
+  const [editFields, setEditFields] = useState({})   // { name, email, role, team }
+  const [saving, setSaving]       = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(null) // uid pending delete
+  const [deleting, setDeleting]   = useState(false)
 
   // ── Talent search state ──────────────────────────────────────────────────
-  const [skillFilters, setSkillFilters] = useState([])   // [{skillId, skillName, catName, minLevel}]
-  const [certFilters,  setCertFilters]  = useState([])   // [{certId, certName, status}]
+  const [skillFilters, setSkillFilters] = useState([])
+  const [certFilters,  setCertFilters]  = useState([])
   const [addingSkill,  setAddingSkill]  = useState(false)
   const [addingCert,   setAddingCert]   = useState(false)
   const [newSkillCat,  setNewSkillCat]  = useState('')
@@ -1539,7 +1540,7 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
   const [newCertId,    setNewCertId]    = useState('')
   const [newCertStatus,setNewCertStatus]= useState('Earned')
 
-  const canEdit = ['manager'].includes(currentUser.role)
+  const canEdit = currentUser.role === 'manager'
   const profLabels = ['Any','Awareness','Working','Advanced','Expert']
 
   // ── Roster helpers ───────────────────────────────────────────────────────
@@ -1555,10 +1556,32 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
     return acc
   }, {})
   const practices = Object.keys(grouped).sort()
-  const allTeams  = [...new Set(allUsers.map(u => u.team).filter(Boolean))].sort()
 
-  const startEdit = (u) => { setEditing(u.id); setEditRole(u.role || 'contributor'); setEditTeam(u.team || '') }
-  const saveEdit  = async (uid) => { setSaving(true); await updateUserProfile(uid, { role: editRole, team: editTeam }); setSaving(false); setEditing(null) }
+  const openEdit = (u) => {
+    setEditUser(u)
+    setEditFields({ name: u.name || '', email: u.email || '', role: u.role || 'contributor', team: u.team || '' })
+  }
+  const saveEdit = async () => {
+    if (!editFields.name.trim()) return
+    setSaving(true)
+    await updateUserProfile(editUser.id, {
+      name: editFields.name.trim(),
+      email: editFields.email.trim().toLowerCase(),
+      role: editFields.role,
+      team: editFields.team,
+    })
+    setSaving(false)
+    setEditUser(null)
+  }
+  const confirmDelete = (uid) => setDeleteConfirm(uid)
+  const handleDelete  = async () => {
+    if (!deleteConfirm) return
+    setDeleting(true)
+    await deleteUserData(deleteConfirm)
+    setDeleting(false)
+    setDeleteConfirm(null)
+    setEditUser(null)
+  }
 
   // ── Talent search helpers ────────────────────────────────────────────────
   const skillById = Object.fromEntries(
@@ -1609,6 +1632,116 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
 
   const hasFilters = skillFilters.length > 0 || certFilters.length > 0
 
+  // ── Edit User Modal ──────────────────────────────────────────────────────
+  const EditUserModal = () => !editUser ? null : (
+    <div style={{ position:'fixed', inset:0, background:'#000a', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+      <div className="fadeUp" style={{ background:'var(--panel)', borderRadius:16, width:'100%', maxWidth:480, border:'1px solid var(--border)', boxShadow:'0 24px 64px #0008' }}>
+        <div style={{ padding:'24px 28px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:18 }}>Edit User</div>
+            <div style={{ fontSize:12, color:'var(--muted)', marginTop:3 }}>{editUser.email}</div>
+          </div>
+          <button onClick={() => setEditUser(null)} style={{ background:'none', border:'none', color:'var(--muted)', fontSize:22, cursor:'pointer', lineHeight:1 }}>✕</button>
+        </div>
+
+        <div style={{ padding:'24px 28px', display:'flex', flexDirection:'column', gap:16 }}>
+          {/* Name */}
+          <div>
+            <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', display:'block', marginBottom:6 }}>Full Name</label>
+            <input value={editFields.name} onChange={e => setEditFields(f => ({ ...f, name: e.target.value }))}
+              style={{ width:'100%', padding:'9px 12px', borderRadius:9, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:14, outline:'none', boxSizing:'border-box' }}
+              onFocus={e=>e.target.style.borderColor='var(--accent)'} onBlur={e=>e.target.style.borderColor='var(--border)'} />
+          </div>
+          {/* Email */}
+          <div>
+            <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', display:'block', marginBottom:6 }}>Email</label>
+            <input value={editFields.email} onChange={e => setEditFields(f => ({ ...f, email: e.target.value }))}
+              style={{ width:'100%', padding:'9px 12px', borderRadius:9, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:14, outline:'none', boxSizing:'border-box' }}
+              onFocus={e=>e.target.style.borderColor='var(--accent)'} onBlur={e=>e.target.style.borderColor='var(--border)'} />
+          </div>
+          {/* Role */}
+          <div>
+            <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', display:'block', marginBottom:6 }}>Role</label>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+              {[
+                { val:'contributor', label:'Contributor' },
+                { val:'lead',        label:'Practice Lead' },
+                { val:'manager',     label:'Manager' },
+              ].map(r => (
+                <div key={r.val} onClick={() => setEditFields(f => ({ ...f, role: r.val }))}
+                  style={{ padding:'8px 10px', borderRadius:8, border:'2px solid', borderColor: editFields.role===r.val ? 'var(--accent)' : 'var(--border)', background: editFields.role===r.val ? '#e0008015' : 'transparent', cursor:'pointer', textAlign:'center', fontSize:12, fontWeight:600, transition:'all .15s' }}>
+                  {r.label}
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Practice */}
+          <div>
+            <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', display:'block', marginBottom:6 }}>Practice</label>
+            <select value={editFields.team} onChange={e => setEditFields(f => ({ ...f, team: e.target.value }))}
+              style={{ width:'100%', padding:'9px 12px', borderRadius:9, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:14, outline:'none' }}
+              onFocus={e=>e.target.style.borderColor='var(--accent)'} onBlur={e=>e.target.style.borderColor='var(--border)'}>
+              <option value="">— Unassigned —</option>
+              {PRACTICES.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display:'flex', gap:10, marginTop:8 }}>
+            <Btn onClick={saveEdit} disabled={saving || !editFields.name.trim()} style={{ flex:1, justifyContent:'center' }}>
+              {saving ? 'Saving…' : 'Save Changes'}
+            </Btn>
+            <Btn variant="secondary" onClick={() => setEditUser(null)} style={{ flex:1, justifyContent:'center' }}>Cancel</Btn>
+          </div>
+
+          {/* Delete zone */}
+          {editUser.id !== currentUser.uid && (
+            <div style={{ borderTop:'1px solid var(--border)', paddingTop:16 }}>
+              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:10 }}>Danger zone — this cannot be undone.</div>
+              <button onClick={() => confirmDelete(editUser.id)}
+                style={{ width:'100%', padding:'9px', borderRadius:9, border:'1px solid #ff444466', background:'#ff444411', color:'#ff6666', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:'Space Grotesk, sans-serif', transition:'all .15s' }}
+                onMouseEnter={e=>{e.target.style.background='#ff444422';e.target.style.borderColor='#ff4444'}}
+                onMouseLeave={e=>{e.target.style.background='#ff444411';e.target.style.borderColor='#ff444466'}}>
+                Remove User from Platform
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+
+  // ── Delete Confirmation Modal ─────────────────────────────────────────────
+  const DeleteConfirmModal = () => {
+    const target = allUsers.find(u => u.id === deleteConfirm)
+    if (!target) return null
+    return (
+      <div style={{ position:'fixed', inset:0, background:'#000c', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+        <div className="fadeUp" style={{ background:'var(--panel)', borderRadius:16, width:'100%', maxWidth:420, border:'1px solid #ff444466', boxShadow:'0 24px 64px #ff000022' }}>
+          <div style={{ padding:'28px 32px', display:'flex', flexDirection:'column', alignItems:'center', gap:16, textAlign:'center' }}>
+            <div style={{ width:56, height:56, borderRadius:16, background:'#ff444418', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28 }}>⚠️</div>
+            <div>
+              <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:800, fontSize:18, marginBottom:6 }}>Remove {target.name}?</div>
+              <p style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6 }}>
+                This will permanently delete their profile, skill assessments, and certifications from Firestore. Their login credentials will remain in Firebase Auth but they will not be able to access the platform.
+              </p>
+            </div>
+            <div style={{ display:'flex', gap:10, width:'100%' }}>
+              <button onClick={handleDelete} disabled={deleting}
+                style={{ flex:1, padding:'10px', borderRadius:9, border:'none', background:'#ff4444', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'Space Grotesk, sans-serif' }}>
+                {deleting ? 'Removing…' : 'Yes, Remove User'}
+              </button>
+              <button onClick={() => setDeleteConfirm(null)}
+                style={{ flex:1, padding:'10px', borderRadius:9, border:'1px solid var(--border)', background:'transparent', color:'var(--ink)', fontWeight:600, fontSize:14, cursor:'pointer', fontFamily:'Space Grotesk, sans-serif' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // ── Shared person row ────────────────────────────────────────────────────
   const PersonRow = ({ person, matchedSkills, matchedCerts, showEdit = false }) => (
     <Card style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 18px', flexWrap:'wrap' }}>
@@ -1617,7 +1750,6 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
         <div style={{ fontWeight:600, fontSize:14, fontFamily:'Space Grotesk, sans-serif' }}>{person.name}</div>
         <div style={{ fontSize:12, color:'var(--muted)' }}>{person.email} · {person.team}</div>
       </div>
-      {/* Matched skill chips */}
       {matchedSkills && matchedSkills.length > 0 && (
         <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
           {matchedSkills.map(f => (
@@ -1632,36 +1764,25 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
           ))}
         </div>
       )}
-      {showEdit && editing === person.id ? (
-        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-          <select value={editRole} onChange={e => setEditRole(e.target.value)} style={{ padding:'6px 10px', borderRadius:7, border:'1px solid var(--accent)', background:'var(--panel2)', color:'var(--ink)', fontSize:12 }}>
-            {ROLES.map(r => <option key={r.val} value={r.val}>{r.label}</option>)}
-          </select>
-          <select value={editTeam} onChange={e => setEditTeam(e.target.value)} style={{ padding:'6px 10px', borderRadius:7, border:'1px solid var(--accent)', background:'var(--panel2)', color:'var(--ink)', fontSize:12 }}>
-            {PRACTICES.map(t => <option key={t}>{t}</option>)}
-          </select>
-          <Btn small onClick={() => saveEdit(person.id)} disabled={saving}>{saving ? '…' : '✓'}</Btn>
-          <Btn small variant="secondary" onClick={() => setEditing(null)}>Cancel</Btn>
-        </div>
-      ) : (
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <RoleBadge role={person.role} />
-          {showEdit && canEdit && (
-            <button onClick={() => startEdit(person)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:7, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}
-              onMouseEnter={e=>{e.target.style.borderColor='var(--accent)';e.target.style.color='var(--accent)'}}
-              onMouseLeave={e=>{e.target.style.borderColor='var(--border)';e.target.style.color='var(--muted)'}}>Edit</button>
-          )}
-          <button onClick={() => setSelected(person)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:7, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}
+      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <RoleBadge role={person.role} />
+        <button onClick={() => setSelected(person)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:7, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}
+          onMouseEnter={e=>{e.target.style.borderColor='var(--accent)';e.target.style.color='var(--accent)'}}
+          onMouseLeave={e=>{e.target.style.borderColor='var(--border)';e.target.style.color='var(--muted)'}}>View</button>
+        {showEdit && canEdit && person.id !== currentUser.uid && (
+          <button onClick={() => openEdit(person)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:7, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}
             onMouseEnter={e=>{e.target.style.borderColor='var(--accent)';e.target.style.color='var(--accent)'}}
-            onMouseLeave={e=>{e.target.style.borderColor='var(--border)';e.target.style.color='var(--muted)'}}>View profile</button>
-        </div>
-      )}
+            onMouseLeave={e=>{e.target.style.borderColor='var(--border)';e.target.style.color='var(--muted)'}}>Edit</button>
+        )}
+      </div>
     </Card>
   )
 
   return (
     <div className="fadeUp" style={{ display:'flex', flexDirection:'column', gap:24 }}>
       {selected && <UserProfileModal person={selected} assessments={assessments} userCerts={userCerts} categories={categories} certs={certs} onClose={() => setSelected(null)} />}
+      <EditUserModal />
+      <DeleteConfirmModal />
 
       {/* Mode toggle */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>

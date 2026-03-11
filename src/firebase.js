@@ -16,6 +16,7 @@ import {
   setDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   collection,
   onSnapshot,
 } from 'firebase/firestore'
@@ -54,6 +55,15 @@ export const onUsersSnapshot = (callback) =>
     callback(snap.docs.map(d => ({ id: d.id, ...d.data() })))
   )
 export const updateUserProfile = (uid, data) => updateDoc(doc(db, 'users', uid), data)
+export const deleteUserData = async (uid) => {
+  // Removes all Firestore data for this user (profile, assessments, certs)
+  // Note: Firebase Auth account requires Admin SDK to delete server-side
+  await Promise.all([
+    deleteDoc(doc(db, 'users',       uid)),
+    deleteDoc(doc(db, 'assessments', uid)),
+    deleteDoc(doc(db, 'userCerts',   uid)),
+  ])
+}
 
 // ─── Assessments ──────────────────────────────────────────────────────────────
 export const saveAssessment = (userId, skillId, data) =>
