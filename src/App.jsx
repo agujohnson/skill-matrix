@@ -2027,11 +2027,12 @@ function CVScanner({ categories, certs, pendingUsers, onPendingUsersChange }) {
   // ── Call Claude API ──────────────────────────────────────────────────────
   const scanWithClaude = async (text) => {
     const apiKey = await getAnthropicKey()
-    console.log('API key found:', apiKey ? `${apiKey.substring(0,10)}...` : 'NONE')
+    console.log('API key found:', apiKey ? `${apiKey.substring(0,15)}...` : 'NONE')
     if (!apiKey) throw new Error('Anthropic API key not configured. Go to Admin → Access Code to add it.')
 
-    const skillsList = skillsFlat.map(s => `${s.id}|${s.name} (${s.domain})`).join('\n')
-    const certsList  = certs.map(c => `${c.id}|${c.name}${c.provider ? ' - ' + c.provider : ''}`).join('\n')
+    const skillsList = skillsFlat.slice(0, 200).map(s => `${s.id}|${s.name} (${s.domain})`).join('\n')
+    const certsList  = certs.slice(0, 100).map(c => `${c.id}|${c.name}${c.provider ? ' - ' + c.provider : ''}`).join('\n')
+    console.log('Prompt sizes - skills:', skillsList.length, 'certs:', certsList.length, 'text:', text.length)
     const practicesList = [
       'AI Engineering','Cloud Engineering','Core Network Eng','HR/Recruiting',
       'Network Operations Eng','RAN Network Eng','Software Engineering',
@@ -2049,7 +2050,7 @@ ${certsList}
 AVAILABLE PRACTICES: ${practicesList}
 
 CV TEXT:
-${text}
+${text.substring(0, 6000)}
 
 INSTRUCTIONS:
 - Extract the person's full name and email address
@@ -2090,10 +2091,12 @@ Respond ONLY with a valid JSON object, no markdown, no explanation:
 
     if (!response.ok) {
       const err = await response.json()
+      console.error('Anthropic API error:', JSON.stringify(err))
       throw new Error(err.error?.message || `API error ${response.status}: ${JSON.stringify(err)}`)
     }
 
     const data = await response.json()
+    console.log('Anthropic response:', JSON.stringify(data).substring(0, 200))
     const raw = data.content.find(b => b.type === 'text')?.text || ''
     const clean = raw.replace(/```json|```/g, '').trim()
     return JSON.parse(clean)
