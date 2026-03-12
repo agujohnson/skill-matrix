@@ -128,8 +128,12 @@ const PRACTICES = [
   'AI Engineering',
   'Cloud Engineering',
   'Core Network Eng',
+  'Delivery',
   'HR/Recruiting',
+  'Innovation',
+  'IoT Engineering',
   'Network Operations Eng',
+  'PMO',
   'RAN Network Eng',
   'Software Engineering',
   'Testing Engineering',
@@ -279,11 +283,12 @@ export default function App() {
   }
 
   const handleSetAssessment = useCallback((userId, skillId, data) => {
+    const taggedData = { ...data, source: 'self' }
     setAssessments(prev => ({
       ...prev,
-      [userId]: { ...prev[userId], [skillId]: data },
+      [userId]: { ...prev[userId], [skillId]: taggedData },
     }))
-    saveAssessment(userId, skillId, data)
+    saveAssessment(userId, skillId, taggedData)
   }, [])
 
   const handleSetUserCerts = useCallback((userId, certsArr) => {
@@ -359,17 +364,26 @@ function Login() {
         return setErr('Invalid access code. Please check with your administrator.')
       }
       const cred = await register(email, pass)
-      // Check if a pending CV-imported profile exists for this email
+      // Check if a pending CV-imported or bulk-imported profile exists for this email
       const pending = await getPendingUserByEmail(email.trim().toLowerCase())
       if (pending) {
+        const src = pending.dataSource || 'cv_scan'
         await createUserProfile(cred.user.uid, {
           name: name.trim() || pending.name,
           email: email.trim().toLowerCase(),
           role: pending.role || role,
           team: pending.team || team.trim(),
+          dataSource: src,
+          importedAt: pending.createdAt || Date.now(),
         })
-        if (pending.assessments && Object.keys(pending.assessments).length > 0)
-          await saveAssessmentsBulk(cred.user.uid, pending.assessments)
+        if (pending.assessments && Object.keys(pending.assessments).length > 0) {
+          // Tag each skill entry with its source so we can track imported vs self-rated
+          const taggedAssessments = {}
+          Object.entries(pending.assessments).forEach(([skillId, val]) => {
+            taggedAssessments[skillId] = { ...val, source: 'imported' }
+          })
+          await saveAssessmentsBulk(cred.user.uid, taggedAssessments)
+        }
         if (pending.certs && pending.certs.length > 0)
           await saveUserCerts(cred.user.uid, pending.certs)
         await deletePendingUser(email.trim().toLowerCase())
@@ -379,6 +393,7 @@ function Login() {
           email: email.trim().toLowerCase(),
           role,
           team: team.trim(),
+          dataSource: 'self_registered',
         })
       }
     } catch (e) {
@@ -1765,6 +1780,25 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
   }
 
   // ── Shared person row ────────────────────────────────────────────────────
+  const DataSourceBadge = ({ person, assessments }) => {
+    const src = person.dataSource
+    if (!src || src === 'self_registered') return null
+    // Check if they've self-rated any skill since import
+    const userAssessments = assessments?.[person.id] || {}
+    const hasSelfRated = Object.values(userAssessments).some(a => a.source === 'self')
+    if (hasSelfRated) return null // they've started reviewing — no badge needed
+    const cfg = src === 'bulk_import'
+      ? { label: 'Imported', color: '#7c6fff', bg: '#7c6fff18', title: 'Pre-loaded from Excel import — awaiting self-review' }
+      : { label: 'CV Scan', color: '#f59e0b', bg: '#f59e0b18', title: 'Pre-loaded from CV scan — awaiting self-review' }
+    return (
+      <span title={cfg.title} style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:99,
+        background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}44`,
+        fontFamily:'Space Grotesk, sans-serif', letterSpacing:'.04em', whiteSpace:'nowrap' }}>
+        {src === 'bulk_import' ? '📥' : '📄'} {cfg.label}
+      </span>
+    )
+  }
+
   const PersonRow = ({ person, matchedSkills, matchedCerts, showEdit = false }) => (
     <Card style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 18px', flexWrap:'wrap' }}>
       <Avatar name={person.name || '?'} size={38} style={{ cursor:'pointer' }} onClick={() => setSelected(person)} />
@@ -1787,6 +1821,7 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
         </div>
       )}
       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <DataSourceBadge person={person} assessments={assessments} />
         <RoleBadge role={person.role} />
         <button onClick={() => setSelected(person)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:7, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}
           onMouseEnter={e=>{e.target.style.borderColor='var(--accent)';e.target.style.color='var(--accent)'}}
@@ -2034,8 +2069,9 @@ function CVScanner({ categories, certs, pendingUsers, onPendingUsersChange }) {
     const certsList  = certs.slice(0, 100).map(c => `${c.id}|${c.name}${c.provider ? ' - ' + c.provider : ''}`).join('\n')
     console.log('Prompt sizes - skills:', skillsList.length, 'certs:', certsList.length, 'text:', text.length)
     const practicesList = [
-      'AI Engineering','Cloud Engineering','Core Network Eng','HR/Recruiting',
-      'Network Operations Eng','RAN Network Eng','Software Engineering',
+      'AI Engineering','Cloud Engineering','Core Network Eng','Delivery',
+      'HR/Recruiting','Innovation','IoT Engineering','Network Operations Eng',
+      'PMO','RAN Network Eng','Software Engineering',
       'Testing Engineering','Transport Network Eng','Voice and Signaling Eng'
     ].join(', ')
 
@@ -2155,6 +2191,7 @@ Respond ONLY with a valid JSON object, no markdown, no explanation:
         assessments: assessmentsObj,
         certs: certsArr,
         summary: extracted.summary,
+        dataSource: 'cv_scan',
         scannedAt: Date.now(),
       })
       setStep('done')
@@ -2259,7 +2296,7 @@ Respond ONLY with a valid JSON object, no markdown, no explanation:
                   <select value={extracted.suggestedPractice}
                     onChange={e => setExtracted(x => ({ ...x, suggestedPractice: e.target.value }))}
                     style={{ padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:13 }}>
-                    {['AI Engineering','Cloud Engineering','Core Network Eng','HR/Recruiting','Network Operations Eng','RAN Network Eng','Software Engineering','Testing Engineering','Transport Network Eng','Voice and Signaling Eng'].map(p => <option key={p}>{p}</option>)}
+                    {['AI Engineering','Cloud Engineering','Core Network Eng','Delivery','HR/Recruiting','Innovation','IoT Engineering','Network Operations Eng','PMO','RAN Network Eng','Software Engineering','Testing Engineering','Transport Network Eng','Voice and Signaling Eng'].map(p => <option key={p}>{p}</option>)}
                   </select>
                 </div>
               </Card>
@@ -2356,10 +2393,16 @@ Respond ONLY with a valid JSON object, no markdown, no explanation:
                   <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:14 }}>{u.name}</div>
                   <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>{u.email || 'No email'} · {u.team}</div>
                   <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>
-                    {Object.keys(u.assessments||{}).length} skills · {(u.certs||[]).length} certs · scanned {new Date(u.scannedAt).toLocaleDateString()}
+                    {Object.keys(u.assessments||{}).length} skills · {(u.certs||[]).length} certs
+                    {' · '}{u.dataSource === 'bulk_import' ? 'imported' : 'scanned'}{' '}
+                    {new Date(u.importedAt || u.scannedAt || u.createdAt).toLocaleDateString()}
                   </div>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  {u.dataSource === 'bulk_import'
+                    ? <span style={{ fontSize:11, padding:'3px 10px', borderRadius:99, background:'#7c6fff18', color:'#7c6fff', fontWeight:600, border:'1px solid #7c6fff44' }}>📥 Bulk import</span>
+                    : <span style={{ fontSize:11, padding:'3px 10px', borderRadius:99, background:'#f59e0b18', color:'#f59e0b', fontWeight:600, border:'1px solid #f59e0b44' }}>📄 CV scan</span>
+                  }
                   <span style={{ fontSize:11, padding:'3px 10px', borderRadius:99, background:'#ffc40018', color:'#ffc400', fontWeight:600, border:'1px solid #ffc40044' }}>Awaiting registration</span>
                   <button onClick={async () => { await deletePendingUser(u.email); onPendingUsersChange() }}
                     style={{ background:'none', border:'1px solid #ff444444', borderRadius:7, padding:'4px 10px', cursor:'pointer', fontSize:12, color:'#ff6666' }}>Remove</button>
