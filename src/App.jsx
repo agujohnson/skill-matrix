@@ -8,7 +8,7 @@ import {
   saveUserCerts, getUserCerts, onUserCertsSnapshot,
   getCategories, saveCategories,
   getCertsLibrary, saveCertsLibrary,
-  getInviteCode, saveInviteCode, getRoleCodes, saveRoleCode, getAnthropicKey, saveAnthropicKey,
+  getInviteCode, saveInviteCode, getRoleCodes, saveRoleCode,
   savePendingUser, getPendingUserByEmail, deletePendingUser, onPendingUsersSnapshot,
 } from './firebase.js'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -2245,83 +2245,28 @@ function CVScanner({ categories, certs, pendingUsers, onPendingUsersChange }) {
     }
   }
 
-  // ── Call Claude API ──────────────────────────────────────────────────────
+  // ── Call /api/scan-cv serverless function ───────────────────────────────
   const scanWithClaude = async (text) => {
-    const apiKey = await getAnthropicKey()
-    console.log('API key found:', apiKey ? `${apiKey.substring(0,15)}...` : 'NONE')
-    if (!apiKey) throw new Error('Anthropic API key not configured. Go to Admin → Access Code to add it.')
-
-    const skillsList = skillsFlat.slice(0, 200).map(s => `${s.id}|${s.name} (${s.domain})`).join('\n')
-    const certsList  = certs.slice(0, 100).map(c => `${c.id}|${c.name}${c.provider ? ' - ' + c.provider : ''}`).join('\n')
-    console.log('Prompt sizes - skills:', skillsList.length, 'certs:', certsList.length, 'text:', text.length)
-    const practicesList = [
-      'AI Engineering','Cloud Engineering','Core Network Eng','Delivery',
-      'HR/Recruiting','Innovation','IoT Engineering','Network Operations Eng',
-      'PMO','RAN Network Eng','Software Engineering',
-      'Testing Engineering','Transport Network Eng','Voice and Signaling Eng'
-    ].join(', ')
-
-    const prompt = `You are analyzing a CV/Resume to extract structured data for a skills matrix platform.
-
-AVAILABLE SKILLS (format: id|name (domain)):
-${skillsList}
-
-AVAILABLE CERTIFICATIONS (format: id|name):
-${certsList}
-
-AVAILABLE PRACTICES: ${practicesList}
-
-CV TEXT:
-${text.substring(0, 6000)}
-
-INSTRUCTIONS:
-- Extract the person's full name and email address
-- Suggest the most appropriate practice from the AVAILABLE PRACTICES list
-- Map their experience to skills from AVAILABLE SKILLS only. Use proficiency: 1=Awareness, 2=Working, 3=Advanced, 4=Expert. Only include skills you are confident about. Do NOT invent skill IDs.
-- Map their certifications to AVAILABLE CERTIFICATIONS only. Only include certs you are confident about.
-- If you are unsure about any skill or cert mapping, omit it rather than guess.
-
-Respond ONLY with a valid JSON object, no markdown, no explanation:
-{
-  "name": "Full Name",
-  "email": "email@example.com or null",
-  "suggestedPractice": "one of the available practices",
-  "practiceReason": "one sentence explanation",
-  "skills": [
-    {"skillId": "exact_id_from_list", "skillName": "name", "proficiency": 1-4, "confidence": "high|medium"}
-  ],
-  "certifications": [
-    {"certId": "exact_id_from_list", "certName": "name", "status": "Earned", "confidence": "high|medium"}
-  ],
-  "summary": "2-3 sentence professional summary based on the CV"
-}`
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('/api/scan-cv', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 2000,
-        messages: [{ role: 'user', content: prompt }],
+        text,
+        skills:    skillsFlat.slice(0, 200).map(s => ({ id: s.id, name: s.name, domain: s.domain })),
+        certs:     certs.slice(0, 100).map(c => ({ id: c.id, name: c.name, provider: c.provider || '' })),
+        practices: [
+          'AI Engineering','Cloud Engineering','Core Network Eng','Delivery',
+          'HR/Recruiting','Innovation','IoT Engineering','Network Operations Eng',
+          'PMO','RAN Network Eng','Software Engineering',
+          'Testing Engineering','Transport Network Eng','Voice and Signaling Eng'
+        ],
       }),
     })
-
     if (!response.ok) {
-      const err = await response.json()
-      console.error('Anthropic API error:', JSON.stringify(err))
-      throw new Error(err.error?.message || `API error ${response.status}: ${JSON.stringify(err)}`)
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.error || `Server error ${response.status}`)
     }
-
-    const data = await response.json()
-    console.log('Anthropic response:', JSON.stringify(data).substring(0, 200))
-    const raw = data.content.find(b => b.type === 'text')?.text || ''
-    const clean = raw.replace(/```json|```/g, '').trim()
-    return JSON.parse(clean)
+    return response.json()
   }
 
   // ── Handle file drop / select ────────────────────────────────────────────
@@ -2734,19 +2679,12 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
   const [roleLoading,      setRoleLoading]      = useState({})
   const [roleVisible,      setRoleVisible]      = useState({})
   const [roleExpanded,     setRoleExpanded]     = useState({})
-  const [anthropicKey,     setAnthropicKey]     = useState('')
-  const [anthropicInput,   setAnthropicInput]   = useState('')
-  const [anthropicSaved,   setAnthropicSaved]   = useState(false)
-  const [anthropicLoading, setAnthropicLoading] = useState(false)
-  const [anthropicVisible, setAnthropicVisible] = useState(false)
-  const [anthropicExpanded,setAnthropicExpanded]= useState(false)
 
   useEffect(() => {
     getRoleCodes().then(codes => {
       setRoleCodes(codes)
       setRoleInputs({ contributor: codes.contributor||'', lead: codes.lead||'', manager: codes.manager||'', admin: codes.admin||'' })
     })
-    getAnthropicKey().then(k => { if (k) { setAnthropicKey(k); setAnthropicInput(k) } })
   }, [])
 
   const handleSaveRoleCode = async (role) => {
@@ -2760,15 +2698,6 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
     setTimeout(() => setRoleSaved(s => ({ ...s, [role]: false })), 2500)
   }
 
-  const handleSaveAnthropicKey = async () => {
-    if (!anthropicInput.trim()) return
-    setAnthropicLoading(true)
-    await saveAnthropicKey(anthropicInput.trim())
-    setAnthropicKey(anthropicInput.trim())
-    setAnthropicSaved(true)
-    setAnthropicLoading(false)
-    setTimeout(() => setAnthropicSaved(false), 2500)
-  }
 
   const COLORS = ['#2563eb','#7c3aed','#0891b2','#059669','#d97706','#dc2626','#0d9488','#9333ea']
 
@@ -3078,62 +3007,6 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
               )
             })}
 
-            {/* Anthropic API Key — collapsible */}
-            <Card style={{ padding: 0, overflow: 'hidden', marginTop: 8,
-              border: anthropicExpanded ? '1px solid #e0008044' : '1px solid var(--border)' }}>
-              <div onClick={() => setAnthropicExpanded(e => !e)}
-                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', cursor: 'pointer',
-                  background: anthropicExpanded ? '#e0008010' : 'transparent', transition: 'background .15s' }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#e0008020',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>🤖</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 14 }}>Anthropic API Key</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>Required for CV Import feature</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {anthropicKey
-                    ? <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
-                        background: '#00d08418', color: '#00d084', border: '1px solid #00d08444' }}>✓ Key set</span>
-                    : <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
-                        background: '#ff444418', color: '#ff6666', border: '1px solid #ff444444' }}>⚠ Not set</span>
-                  }
-                  <span style={{ color: 'var(--muted)', fontSize: 16, transition: 'transform .2s',
-                    display: 'inline-block', transform: anthropicExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
-                </div>
-              </div>
-              {anthropicExpanded && (
-                <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: 10,
-                  borderTop: '1px solid var(--border)' }}>
-                  <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginTop: 14 }}>
-                    Get your key from <span style={{ color: 'var(--accent)' }}>console.anthropic.com</span> → API Keys.
-                  </p>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <div style={{ flex: 1, position: 'relative' }}>
-                      <input
-                        type={anthropicVisible ? 'text' : 'password'}
-                        value={anthropicInput}
-                        onChange={e => setAnthropicInput(e.target.value)}
-                        placeholder="sk-ant-api03-…"
-                        style={{ width: '100%', padding: '10px 44px 10px 14px', borderRadius: 9,
-                          border: '1px solid var(--border)', background: 'var(--panel2)', color: 'var(--ink)',
-                          fontSize: 13, fontFamily: 'Courier New, monospace', outline: 'none', boxSizing: 'border-box' }}
-                        onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                        onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                        onKeyDown={e => e.key === 'Enter' && handleSaveAnthropicKey()}
-                      />
-                      <button onClick={() => setAnthropicVisible(v => !v)}
-                        style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                          background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16, padding: 4 }}>
-                        {anthropicVisible ? '🙈' : '👁️'}
-                      </button>
-                    </div>
-                    <Btn onClick={handleSaveAnthropicKey} disabled={anthropicLoading || !anthropicInput.trim()} style={{ whiteSpace: 'nowrap' }}>
-                      {anthropicLoading ? 'Saving…' : anthropicSaved ? '✓ Saved!' : 'Save Key'}
-                    </Btn>
-                  </div>
-                </div>
-              )}
-            </Card>
           </div>
         )
       })()}
