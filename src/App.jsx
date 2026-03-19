@@ -1201,7 +1201,7 @@ function Heatmap({ assessments, categories, allUsers }) {
                           <div key={sk.id} style={{ display:'flex', alignItems:'center', gap:6 }}>
                             <div style={{ width:8, height:8, borderRadius:2, background:PIE_COLORS[i], flexShrink:0 }} />
                             <span style={{ flex:1, fontSize:11, fontWeight:400, color:'var(--ink)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{sk.name}</span>
-                            <span style={{ fontSize:10, fontWeight:400, color:PIE_COLORS[i] }}>{sk.resources}</span>
+                            <span style={{ fontSize:10, fontWeight:400, color:'var(--ink)' }}>{sk.resources}</span>
                           </div>
                         ))}
                       </div>
