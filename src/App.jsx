@@ -1438,6 +1438,7 @@ function Heatmap({ assessments, categories, allUsers }) {
                     onClick={() => {
                       setBubbleSelected(b.id)
                       setDrillSkill({ id:b.id, name:b.name, catColor:b.catColor })
+                      window.scrollTo({ top: 0, behavior: 'smooth' })
                     }}>
                     {/* Selection ring */}
                     {isSelected && <circle cx={cx} cy={cy} r={r+4} fill="none" stroke="#fff" strokeWidth="1.5" opacity="0.6"/>}
@@ -1535,7 +1536,7 @@ function Heatmap({ assessments, categories, allUsers }) {
                   return (
                     <tr key={sk.id} style={{ borderBottom:'1px solid var(--border)' }}>
                       {/* Skill name — clickable */}
-                      <td onClick={() => setDrillSkill({ id:sk.id, name:sk.name, catColor:cat.color })}
+                      <td onClick={() => { setDrillSkill({ id:sk.id, name:sk.name, catColor:cat.color }); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
                         style={{ padding:'10px 16px', fontWeight:500, whiteSpace:'nowrap', position:'sticky', left:0, background:'var(--panel)', zIndex:1, cursor:'pointer', color:drillSkill?.id===sk.id?'var(--accent)':'var(--ink)', transition:'color .15s' }}
                         onMouseEnter={e=>e.currentTarget.style.color='var(--accent)'}
                         onMouseLeave={e=>e.currentTarget.style.color=drillSkill?.id===sk.id?'var(--accent)':'var(--ink)'}>
