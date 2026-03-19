@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   auth, login, register, loginWithMicrosoft, logout,
   getUserProfile, createUserProfile,
@@ -1635,7 +1635,7 @@ function UserProfileModal({ person, assessments, userCerts, categories, certs, o
   const profColor = v => ['#4a4a60','#e00080','#ffc400','#4a90d9','#00c87a'][v] || '#4a4a60'
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'#000c', zIndex:999, display:'flex', alignItems:'center', justifyContent:'center', padding: 20 }}
+    <div style={{ position:'fixed', inset:0, background:'#000c', zIndex:999, display:'flex', alignItems:'flex-start', justifyContent:'center', paddingTop:80, paddingLeft:20, paddingRight:20, paddingBottom:20, overflowY:'auto' }}
          onClick={e => e.target===e.currentTarget && onClose()}>
       <div className="fadeUp" style={{
         background:'var(--panel)', border:'1px solid var(--border)', borderRadius:16,
@@ -1755,6 +1755,7 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
   const [certFilters,  setCertFilters]  = useState([])
   const [addingSkill,  setAddingSkill]  = useState(false)
   const [addingCert,   setAddingCert]   = useState(false)
+  const filterFormRef = useRef(null)
   const [newSkillCat,  setNewSkillCat]  = useState('')
   const [newSkillId,   setNewSkillId]   = useState('')
   const [newSkillLevel,setNewSkillLevel]= useState(0)
@@ -1855,7 +1856,7 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
 
   // ── Edit User Modal ──────────────────────────────────────────────────────
   const EditUserModal = () => !editUser ? null : (
-    <div style={{ position:'fixed', inset:0, background:'#000a', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+    <div style={{ position:'fixed', inset:0, background:'#000a', zIndex:300, display:'flex', alignItems:'flex-start', justifyContent:'center', paddingTop:80, paddingLeft:24, paddingRight:24, paddingBottom:24, overflowY:'auto' }}>
       <div className="fadeUp" style={{ background:'var(--panel)', borderRadius:16, width:'100%', maxWidth:480, border:'1px solid var(--border)', boxShadow:'0 24px 64px #0008' }}>
         <div style={{ padding:'24px 28px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div>
@@ -1938,7 +1939,7 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
     const target = allUsers.find(u => u.id === deleteConfirm)
     if (!target) return null
     return (
-      <div style={{ position:'fixed', inset:0, background:'#000c', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+      <div style={{ position:'fixed', inset:0, background:'#000c', zIndex:400, display:'flex', alignItems:'flex-start', justifyContent:'center', paddingTop:80, paddingLeft:24, paddingRight:24, paddingBottom:24, overflowY:'auto' }}>
         <div className="fadeUp" style={{ background:'var(--panel)', borderRadius:16, width:'100%', maxWidth:420, border:'1px solid #ff444466', boxShadow:'0 24px 64px #ff000022' }}>
           <div style={{ padding:'28px 32px', display:'flex', flexDirection:'column', alignItems:'center', gap:16, textAlign:'center' }}>
             <div style={{ width:56, height:56, borderRadius:16, background:'#ff444418', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28 }}>⚠️</div>
@@ -2105,7 +2106,7 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
 
             {/* Add skill row */}
             {addingSkill ? (
-              <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+              <div ref={filterFormRef} style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
                 <select value={newSkillCat} onChange={e=>{setNewSkillCat(e.target.value);setNewSkillId('')}} style={{ padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:13 }}>
                   <option value="">Select domain…</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -2123,7 +2124,7 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
                 <Btn small variant="secondary" onClick={()=>setAddingSkill(false)}>Cancel</Btn>
               </div>
             ) : addingCert ? (
-              <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+              <div ref={filterFormRef} style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
                 <select value={newCertId} onChange={e=>setNewCertId(e.target.value)} style={{ padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', color:'var(--ink)', fontSize:13 }}>
                   <option value="">Select certification…</option>
                   {certs.filter(c=>!certFilters.find(f=>f.certId===c.id)).map(c => <option key={c.id} value={c.id}>{c.name} ({c.provider})</option>)}
@@ -2136,11 +2137,11 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
               </div>
             ) : (
               <div style={{ display:'flex', gap:8 }}>
-                <button onClick={()=>{setAddingSkill(true);setAddingCert(false)}} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'1px dashed var(--border)', background:'none', color:'var(--muted)', cursor:'pointer', fontSize:13, fontFamily:'Space Grotesk, sans-serif', fontWeight:600, transition:'all .15s' }}
+                <button onClick={()=>{setAddingSkill(true);setAddingCert(false);setTimeout(()=>filterFormRef.current?.scrollIntoView({behavior:'smooth',block:'center'}),50)}} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'1px dashed var(--border)', background:'none', color:'var(--muted)', cursor:'pointer', fontSize:13, fontFamily:'Space Grotesk, sans-serif', fontWeight:600, transition:'all .15s' }}
                   onMouseEnter={e=>e.currentTarget.style.borderColor='var(--accent)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
                   + Add skill filter
                 </button>
-                <button onClick={()=>{setAddingCert(true);setAddingSkill(false)}} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'1px dashed var(--border)', background:'none', color:'var(--muted)', cursor:'pointer', fontSize:13, fontFamily:'Space Grotesk, sans-serif', fontWeight:600, transition:'all .15s' }}
+                <button onClick={()=>{setAddingCert(true);setAddingSkill(false);setTimeout(()=>filterFormRef.current?.scrollIntoView({behavior:'smooth',block:'center'}),50)}} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'1px dashed var(--border)', background:'none', color:'var(--muted)', cursor:'pointer', fontSize:13, fontFamily:'Space Grotesk, sans-serif', fontWeight:600, transition:'all .15s' }}
                   onMouseEnter={e=>e.currentTarget.style.borderColor='var(--accent)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
                   + Add cert filter
                 </button>
