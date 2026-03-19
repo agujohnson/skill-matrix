@@ -1015,6 +1015,8 @@ function Heatmap({ assessments, categories, allUsers }) {
   const [expandedSkill,  setExpandedSkill]  = useState(null)
   const [top5Modal,       setTop5Modal]       = useState(false)
   const [top5DetailSkill, setTop5DetailSkill] = useState(null)
+  const [bubbleHover,     setBubbleHover]     = useState(null)
+  const [bubbleSelected,  setBubbleSelected]  = useState(null)
   const userById = Object.fromEntries((allUsers||[]).map(u => [u.id, u]))
 
   // Filter memberIds by practice if selected
