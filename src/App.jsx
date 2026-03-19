@@ -1200,8 +1200,8 @@ function Heatmap({ assessments, categories, allUsers }) {
                         {top5.map((sk, i) => (
                           <div key={sk.id} style={{ display:'flex', alignItems:'center', gap:6 }}>
                             <div style={{ width:8, height:8, borderRadius:2, background:PIE_COLORS[i], flexShrink:0 }} />
-                            <span style={{ flex:1, fontSize:11, fontWeight:600, color:'var(--ink)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{sk.name}</span>
-                            <span style={{ fontSize:10, fontWeight:700, color:PIE_COLORS[i] }}>{sk.resources}</span>
+                            <span style={{ flex:1, fontSize:11, fontWeight:400, color:'var(--ink)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{sk.name}</span>
+                            <span style={{ fontSize:10, fontWeight:400, color:PIE_COLORS[i] }}>{sk.resources}</span>
                           </div>
                         ))}
                       </div>
@@ -1212,7 +1212,7 @@ function Heatmap({ assessments, categories, allUsers }) {
               {/* Modal */}
               {top5Modal && (
                 <div onClick={() => { setTop5Modal(false); setTop5DetailSkill(null) }}
-                  style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+                  style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:1000, display:'flex', alignItems:'flex-start', justifyContent:'center', paddingTop:80, paddingLeft:24, paddingRight:24, paddingBottom:24, overflowY:'auto' }}>
                   <div onClick={e => e.stopPropagation()}
                     style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:16, padding:'28px 32px', maxWidth:520, width:'100%', maxHeight:'85vh', overflowY:'auto' }}>
 
@@ -1267,7 +1267,7 @@ function Heatmap({ assessments, categories, allUsers }) {
                               </div>
                               {/* Score pill — click to toggle detail */}
                               <div style={{ textAlign:'right' }}>
-                                <div style={{ fontSize:16, fontWeight:800, color:col }}>{(sk.score * 100).toFixed(0)}</div>
+                                <div style={{ fontSize:16, fontWeight:800, color:'#ffffff' }}>{(sk.score * 100).toFixed(0)}</div>
                                 <div style={{ fontSize:10, color:'var(--muted)' }}>score</div>
                               </div>
                               <span style={{ color:'var(--muted)', fontSize:14, transform: isDetail ? 'rotate(180deg)' : 'none', transition:'transform .2s', display:'block' }}>▾</span>
