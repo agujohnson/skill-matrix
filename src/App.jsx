@@ -1116,71 +1116,97 @@ function Heatmap({ assessments, categories, allUsers }) {
       </div>
 
       {/* Stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, alignItems: 'start' }}>
-        {[
-          { label: 'Team Members', val: visibleIds.length, color: '#0ea5e9',
-            icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
-          { label: 'Skills Tracked', val: categories.reduce((s, c) => s + c.skills.length, 0), color: '#a855f7',
-            icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> },
-          { label: 'Updated Last 7 Days', val: recentlyUpdated, color: '#00d084',
-            icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
-          { label: 'Avg Skills / Member', val: avgSkillsPerUser, color: '#e00080',
-            icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> },
-        ].map(c => (
-          <Card key={c.label} style={{ padding: '16px 14px' }}>
-            <div style={{ width:36, height:36, borderRadius:9, background:c.color+'18', display:'flex', alignItems:'center', justifyContent:'center', color:c.color, marginBottom:10 }}>{c.icon}</div>
-            <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:800, fontSize:26, lineHeight:1 }}>{c.val}</div>
-            <div style={{ fontSize:11, color:'var(--muted)', marginTop:5, fontWeight:500 }}>{c.label}</div>
-          </Card>
-        ))}
+      {(() => {
+        const allSkills = categories.flatMap(cat => cat.skills.map(sk => ({ ...sk, catColor: cat.color })))
+        const top5 = allSkills
+          .map(sk => {
+            const avg = avgProf(sk.id)
+            const cov = coverage(sk.id)
+            const resources = visibleIds.filter(uid => (assessments[uid]?.[sk.id]?.prof || 0) >= 3).length
+            return { ...sk, avg, cov, resources }
+          })
+          .filter(sk => sk.avg >= 3 && sk.avg <= 4 && sk.resources > 0)
+          .sort((a, b) => (b.cov - a.cov) || (b.avg - a.avg))
+          .slice(0, 5)
+        const [expandedSkill, setExpandedSkill] = React.useState(null)
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+            {[
+              { label: 'Team Members', val: visibleIds.length, color: '#0ea5e9',
+                icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+              { label: 'Skills Tracked', val: categories.reduce((s, c) => s + c.skills.length, 0), color: '#a855f7',
+                icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> },
+              { label: 'Updated Last 7 Days', val: recentlyUpdated, color: '#00d084',
+                icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
+              { label: 'Avg Skills / Member', val: avgSkillsPerUser, color: '#e00080',
+                icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> },
+            ].map(c => (
+              <Card key={c.label} style={{ padding: '16px 14px', height: '100%', boxSizing: 'border-box' }}>
+                <div style={{ width:36, height:36, borderRadius:9, background:c.color+'18', display:'flex', alignItems:'center', justifyContent:'center', color:c.color, marginBottom:10 }}>{c.icon}</div>
+                <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:800, fontSize:26, lineHeight:1 }}>{c.val}</div>
+                <div style={{ fontSize:11, color:'var(--muted)', marginTop:5, fontWeight:500 }}>{c.label}</div>
+              </Card>
+            ))}
 
-        {/* Top 5 Skills card */}
-        {(() => {
-          const allSkills = categories.flatMap(cat => cat.skills.map(sk => ({ ...sk, catColor: cat.color })))
-          const top5 = allSkills
-            .map(sk => {
-              const avg = avgProf(sk.id)
-              const cov = coverage(sk.id)
-              const resources = visibleIds.filter(uid => (assessments[uid]?.[sk.id]?.prof || 0) >= 3).length
-              return { ...sk, avg, cov, resources }
-            })
-            .filter(sk => sk.avg >= 3 && sk.avg <= 4 && sk.resources > 0)
-            .sort((a, b) => (b.cov - a.cov) || (b.avg - a.avg))
-            .slice(0, 5)
-          return (
-            <Card style={{ padding: '16px 14px', gridRow: 'span 1' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+            {/* Top 5 Skills card */}
+            <Card style={{ padding: '16px 14px', boxSizing: 'border-box' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
                 <div style={{ width:36, height:36, borderRadius:9, background:'#f59e0b18', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
                 </div>
-                <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:12, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em' }}>Top 5 Skills</div>
+                <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:11, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em' }}>Top 5 Skills</div>
               </div>
               {top5.length === 0
                 ? <div style={{ fontSize:12, color:'var(--muted)', textAlign:'center', padding:'8px 0' }}>No skills at Advanced or Expert level yet.</div>
-                : <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                : <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                     {top5.map((sk, i) => {
                       const col = profTextColor(Math.round(sk.avg))
                       const lbl = profLabel(Math.round(sk.avg))
+                      const isOpen = expandedSkill === sk.id
                       return (
-                        <div key={sk.id} style={{ display:'flex', alignItems:'center', gap:8 }}>
-                          <span style={{ fontSize:11, fontWeight:800, color:'var(--muted)', minWidth:14, textAlign:'right' }}>{i+1}</span>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:12, fontWeight:600, color:'var(--ink)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{sk.name}</div>
-                            <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:2 }}>
-                              <span style={{ fontSize:10, fontWeight:700, padding:'1px 6px', borderRadius:99, background:col+'18', color:col, border:`1px solid ${col}33`, whiteSpace:'nowrap' }}>{sk.avg.toFixed(1)} {lbl}</span>
-                              <span style={{ fontSize:10, color:'var(--muted)', whiteSpace:'nowrap' }}>{sk.resources} resource{sk.resources !== 1 ? 's' : ''}</span>
-                            </div>
+                        <div key={sk.id}
+                          onClick={() => setExpandedSkill(isOpen ? null : sk.id)}
+                          style={{ borderRadius:8, padding:'7px 9px', cursor:'pointer', transition:'background .15s',
+                            background: isOpen ? col + '12' : 'var(--panel2)',
+                            border: `1px solid ${isOpen ? col + '44' : 'var(--border)'}` }}>
+                          {/* Collapsed: rank + name + resources */}
+                          <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                            <span style={{ fontSize:10, fontWeight:800, color:'var(--muted)', minWidth:13 }}>{i+1}</span>
+                            <span style={{ flex:1, fontSize:12, fontWeight:600, color:'var(--ink)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{sk.name}</span>
+                            <span style={{ fontSize:11, fontWeight:700, color:col, whiteSpace:'nowrap' }}>{sk.resources} <span style={{ fontWeight:500, color:'var(--muted)' }}>res</span></span>
                           </div>
-                          <span style={{ fontSize:10, fontWeight:700, color: sk.cov > 66 ? '#00c87a' : sk.cov > 33 ? '#ffc400' : '#ff4444', whiteSpace:'nowrap' }}>{sk.cov}%</span>
+                          {/* Expanded: level + coverage + resources detail */}
+                          {isOpen && (
+                            <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${col}33`, display:'flex', flexDirection:'column', gap:5 }}>
+                              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                                <span style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>LEVEL</span>
+                                <span style={{ fontSize:11, fontWeight:700, padding:'1px 7px', borderRadius:99, background:col+'18', color:col, border:`1px solid ${col}33` }}>{sk.avg.toFixed(1)} — {lbl}</span>
+                              </div>
+                              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                                <span style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>COVERAGE</span>
+                                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                                  <div style={{ width:44, height:4, borderRadius:99, background:'var(--border)', overflow:'hidden' }}>
+                                    <div style={{ width:`${sk.cov}%`, height:'100%', borderRadius:99,
+                                      background: sk.cov > 66 ? '#00c87a' : sk.cov > 33 ? '#ffc400' : '#ff4444' }} />
+                                  </div>
+                                  <span style={{ fontSize:11, fontWeight:700, color: sk.cov > 66 ? '#00c87a' : sk.cov > 33 ? '#ffc400' : '#ff4444' }}>{sk.cov}%</span>
+                                </div>
+                              </div>
+                              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                                <span style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>RESOURCES</span>
+                                <span style={{ fontSize:11, fontWeight:700, color:'var(--ink)' }}>{sk.resources} {sk.resources === 1 ? 'person' : 'people'}</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )
                     })}
                   </div>
               }
             </Card>
-          )
-        })()}
-      </div>
+          </div>
+        )
+      })()}
 
       {/* Matrix table — rows=skills, cols=proficiency levels */}
       <Card style={{ padding: 0, overflow: 'auto' }}>
