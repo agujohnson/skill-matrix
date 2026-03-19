@@ -689,7 +689,7 @@ function SuggestModal({ type, domainName, domainId, allDomains, user, onClose, o
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#000a', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    <div style={{ position: 'fixed', inset: 0, background: '#000a', zIndex: 999, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 80, overflowY: 'auto' }}
          onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="fadeUp" style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 14, padding: 28, width: 420, display: 'flex', flexDirection: 'column', gap: 18 }}>
         {done ? (
