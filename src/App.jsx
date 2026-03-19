@@ -1775,7 +1775,7 @@ function DomainView({ assessments, categories }) {
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--panel2)' }}>
-                {['Skill', 'Team Avg', 'High Interest', 'Coverage'].map(h => (
+                {['Skill', 'Team Avg', 'Growth Interest', 'Coverage'].map(h => (
                   <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
                 ))}
               </tr>
