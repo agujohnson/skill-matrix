@@ -1012,6 +1012,7 @@ function Heatmap({ assessments, categories, allUsers }) {
   const [drillSkill, setDrillSkill] = useState(null)
   const [filterPractice, setFilterPractice] = useState('all')
   const [filterLevel,    setFilterLevel]    = useState(0)
+  const [collapsedCats,  setCollapsedCats]  = useState({})
   const [expandedSkill,  setExpandedSkill]  = useState(null)
   const [top5Modal,       setTop5Modal]       = useState(false)
   const [top5DetailSkill, setTop5DetailSkill] = useState(null)
@@ -1517,18 +1518,40 @@ function Heatmap({ assessments, categories, allUsers }) {
             </tr>
           </thead>
           <tbody>
-            {categories.map(cat => (
+            {categories.map(cat => {
+              const visibleSkills = cat.skills.filter(sk => {
+                if (filterLevel === 0) return true
+                const counts = levelCounts(sk.id)
+                return counts[filterLevel] > 0
+              })
+              // Auto-expand if a level filter is active and this cat has matching skills
+              const forceExpand = filterLevel !== 0 && visibleSkills.length > 0
+              const isCollapsed = forceExpand ? false : (collapsedCats[cat.id] !== false)  // default collapsed
+              const toggle = () => setCollapsedCats(prev => ({ ...prev, [cat.id]: !isCollapsed }))
+              const coveredSkills = cat.skills.filter(sk => coverage(sk.id) > 0).length
+              const totalSkills   = cat.skills.length
+              return (
               <>
-                <tr key={cat.id + '_h'}>
-                  <td colSpan={7} style={{ padding:'10px 16px', background:cat.color+'18', fontWeight:700, fontSize:11, color:cat.color, textTransform:'uppercase', letterSpacing:'.08em' }}>
-                    {cat.name}
+                <tr key={cat.id + '_h'} onClick={toggle} style={{ cursor:'pointer' }}>
+                  <td colSpan={7} style={{ padding:'10px 16px', background:cat.color+'18',
+                    userSelect:'none', transition:'background .15s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = cat.color+'28'}
+                    onMouseLeave={e => e.currentTarget.style.background = cat.color+'18'}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <span style={{ fontWeight:700, fontSize:11, color:cat.color, textTransform:'uppercase', letterSpacing:'.08em' }}>
+                        {cat.name}
+                      </span>
+                      <span style={{ fontSize:11, color:cat.color, opacity:0.6, fontWeight:400 }}>
+                        {visibleSkills.length} skill{visibleSkills.length !== 1 ? 's' : ''}
+                        {filterLevel === 0 && coveredSkills > 0 && ` · ${coveredSkills} with coverage`}
+                      </span>
+                      <span style={{ marginLeft:'auto', fontSize:12, color:cat.color, opacity:0.7,
+                        transform: isCollapsed ? 'rotate(0deg)' : 'rotate(180deg)',
+                        display:'inline-block', transition:'transform .2s' }}>▾</span>
+                    </div>
                   </td>
                 </tr>
-                {cat.skills.filter(sk => {
-                  if (filterLevel === 0) return true
-                  const counts = levelCounts(sk.id)
-                  return counts[filterLevel] > 0
-                }).map(sk => {
+                {!isCollapsed && visibleSkills.map(sk => {
                   const counts  = levelCounts(sk.id)
                   const avg     = avgProf(sk.id)
                   const cov     = coverage(sk.id)
@@ -1586,7 +1609,8 @@ function Heatmap({ assessments, categories, allUsers }) {
                   )
                 })}
               </>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </Card>
