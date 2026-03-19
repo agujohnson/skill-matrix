@@ -1012,6 +1012,8 @@ function Heatmap({ assessments, categories, allUsers }) {
   const [drillSkill, setDrillSkill] = useState(null)
   const [filterPractice, setFilterPractice] = useState('all')
   const [expandedSkill,  setExpandedSkill]  = useState(null)
+  const [top5Modal,       setTop5Modal]       = useState(false)
+  const [top5DetailSkill, setTop5DetailSkill] = useState(null)
   const userById = Object.fromEntries((allUsers||[]).map(u => [u.id, u]))
 
   // Filter memberIds by practice if selected
@@ -1137,71 +1139,170 @@ function Heatmap({ assessments, categories, allUsers }) {
 
         {/* Top 5 Skills card */}
         {(() => {
-          const allSkills = categories.flatMap(cat => cat.skills.map(sk => ({ ...sk, catColor: cat.color })))
+          const PIE_COLORS = ['#e00080','#f59e0b','#4a90d9','#00c87a','#a855f7']
+          const allSkills = categories.flatMap(cat => cat.skills.map(sk => ({ ...sk })))
+          const maxRes = Math.max(...allSkills.map(sk => visibleIds.filter(uid => (assessments[uid]?.[sk.id]?.prof||0) >= 3).length), 1)
           const top5 = allSkills
             .map(sk => {
               const avg = avgProf(sk.id)
               const cov = coverage(sk.id)
-              const resources = visibleIds.filter(uid => (assessments[uid]?.[sk.id]?.prof || 0) >= 3).length
-              return { ...sk, avg, cov, resources }
+              const resources = visibleIds.filter(uid => (assessments[uid]?.[sk.id]?.prof||0) >= 3).length
+              const score = (resources/maxRes)*0.50 + (avg/4)*0.30 + (cov/100)*0.20
+              return { ...sk, avg, cov, resources, score }
             })
-            .filter(sk => sk.avg >= 3 && sk.avg <= 4 && sk.resources > 0)
-            .sort((a, b) => (b.cov - a.cov) || (b.avg - a.avg))
+            .filter(sk => sk.resources > 0 && sk.avg >= 3)
+            .sort((a, b) => b.score - a.score)
             .slice(0, 5)
+
+          // Build SVG donut slices
+          const total = top5.reduce((s, sk) => s + sk.score, 0)
+          const slices = []
+          let cumAngle = -Math.PI / 2
+          const cx = 44, cy = 44, R = 36, r = 20
+          top5.forEach((sk, i) => {
+            const angle = (sk.score / total) * 2 * Math.PI
+            const x1 = cx + R * Math.cos(cumAngle), y1 = cy + R * Math.sin(cumAngle)
+            const x2 = cx + R * Math.cos(cumAngle + angle), y2 = cy + R * Math.sin(cumAngle + angle)
+            const ix1 = cx + r * Math.cos(cumAngle), iy1 = cy + r * Math.sin(cumAngle)
+            const ix2 = cx + r * Math.cos(cumAngle + angle), iy2 = cy + r * Math.sin(cumAngle + angle)
+            const large = angle > Math.PI ? 1 : 0
+            slices.push({ i, sk, d: `M${ix1} ${iy1} L${x1} ${y1} A${R} ${R} 0 ${large} 1 ${x2} ${y2} L${ix2} ${iy2} A${r} ${r} 0 ${large} 0 ${ix1} ${iy1} Z`, color: PIE_COLORS[i] })
+            cumAngle += angle
+          })
+
           return (
-            <Card style={{ padding: '16px 14px' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-                <div style={{ width:36, height:36, borderRadius:9, background:'#f59e0b18', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+            <>
+              <Card onClick={() => setTop5Modal(true)}
+                style={{ padding:'16px 14px', cursor:'pointer', transition:'border-color .15s' }}
+                onMouseEnter={e => e.currentTarget.style.borderColor='#f59e0b66'}
+                onMouseLeave={e => e.currentTarget.style.borderColor='var(--border)'}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                  <div style={{ width:36, height:36, borderRadius:9, background:'#f59e0b18', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                  </div>
+                  <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:11, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em' }}>Top 5 Skills</div>
+                  <span style={{ marginLeft:'auto', fontSize:10, color:'var(--muted)' }}>click for details →</span>
                 </div>
-                <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:11, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em' }}>Top 5 Skills</div>
-              </div>
-              {top5.length === 0
-                ? <div style={{ fontSize:12, color:'var(--muted)', textAlign:'center', padding:'8px 0' }}>No skills at Advanced or Expert level yet.</div>
-                : <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                    {top5.map((sk, i) => {
-                      const col = profTextColor(Math.round(sk.avg))
-                      const lbl = profLabel(Math.round(sk.avg))
-                      const isExpanded = expandedSkill === sk.id
-                      return (
-                        <div key={sk.id}
-                          onClick={() => setExpandedSkill(isExpanded ? null : sk.id)}
-                          style={{ borderRadius:8, padding:'7px 9px', cursor:'pointer', transition:'background .15s',
-                            background: isExpanded ? col+'12' : 'var(--panel2)',
-                            border: `1px solid ${isExpanded ? col+'44' : 'transparent'}` }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-                            <span style={{ fontSize:10, fontWeight:800, color:'var(--muted)', minWidth:13 }}>{i+1}</span>
-                            <span style={{ flex:1, fontSize:12, fontWeight:600, color:'var(--ink)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{sk.name}</span>
-                            <span style={{ fontSize:11, fontWeight:700, color:col }}>{sk.resources} <span style={{ fontWeight:500, color:'var(--muted)', fontSize:10 }}>res</span></span>
+                {top5.length === 0
+                  ? <div style={{ fontSize:12, color:'var(--muted)', textAlign:'center', padding:'12px 0' }}>No skills at Advanced+ level yet.</div>
+                  : <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                      {/* Donut chart */}
+                      <svg width="88" height="88" viewBox="0 0 88 88" style={{ flexShrink:0 }}>
+                        {slices.map(s => (
+                          <path key={s.i} d={s.d} fill={s.color} opacity="0.9" />
+                        ))}
+                        <circle cx={cx} cy={cy} r={r-1} fill="var(--panel)" />
+                        <text x={cx} y={cy+1} textAnchor="middle" dominantBaseline="middle"
+                          style={{ fontSize:10, fontWeight:700, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>TOP 5</text>
+                      </svg>
+                      {/* Legend */}
+                      <div style={{ flex:1, display:'flex', flexDirection:'column', gap:5, minWidth:0 }}>
+                        {top5.map((sk, i) => (
+                          <div key={sk.id} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                            <div style={{ width:8, height:8, borderRadius:2, background:PIE_COLORS[i], flexShrink:0 }} />
+                            <span style={{ flex:1, fontSize:11, fontWeight:600, color:'var(--ink)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{sk.name}</span>
+                            <span style={{ fontSize:10, fontWeight:700, color:PIE_COLORS[i] }}>{sk.resources}</span>
                           </div>
-                          {isExpanded && (
-                            <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${col}33`, display:'flex', flexDirection:'column', gap:5 }}>
-                              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                                <span style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>LEVEL</span>
-                                <span style={{ fontSize:11, fontWeight:700, padding:'1px 7px', borderRadius:99, background:col+'18', color:col, border:`1px solid ${col}33` }}>{sk.avg.toFixed(1)} — {lbl}</span>
+                        ))}
+                      </div>
+                    </div>
+                }
+              </Card>
+
+              {/* Modal */}
+              {top5Modal && (
+                <div onClick={() => { setTop5Modal(false); setTop5DetailSkill(null) }}
+                  style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+                  <div onClick={e => e.stopPropagation()}
+                    style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:16, padding:'28px 32px', maxWidth:520, width:'100%', maxHeight:'85vh', overflowY:'auto' }}>
+
+                    {/* Header */}
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+                      <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:800, fontSize:20 }}>Top 5 Skills</div>
+                      <button onClick={() => { setTop5Modal(false); setTop5DetailSkill(null) }}
+                        style={{ background:'none', border:'none', color:'var(--muted)', fontSize:22, cursor:'pointer', lineHeight:1, padding:4 }}>✕</button>
+                    </div>
+
+                    {/* Score formula explanation */}
+                    <div style={{ background:'var(--panel2)', border:'1px solid var(--border)', borderRadius:10, padding:'14px 16px', marginBottom:20 }}>
+                      <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:12, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:10 }}>Score Formula</div>
+                      <div style={{ fontSize:13, color:'var(--ink)', fontFamily:'monospace', marginBottom:8 }}>
+                        score = (resources × <span style={{ color:'#f59e0b', fontWeight:700 }}>0.50</span>) + (level/4 × <span style={{ color:'#4a90d9', fontWeight:700 }}>0.30</span>) + (coverage × <span style={{ color:'#00c87a', fontWeight:700 }}>0.20</span>)
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                        {[
+                          { label:'Resources (50%)', color:'#f59e0b', desc:'# of individuals at Advanced or Expert (≥3). Highest weight — reflects deployable capability.' },
+                          { label:'Level (30%)',     color:'#4a90d9', desc:'Average proficiency normalized to 0–1. Rewards depth of expertise.' },
+                          { label:'Coverage (20%)', color:'#00c87a', desc:'% of team who have rated this skill. Data completeness signal.' },
+                        ].map(w => (
+                          <div key={w.label} style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+                            <span style={{ width:8, height:8, borderRadius:2, background:w.color, flexShrink:0, marginTop:4 }} />
+                            <div>
+                              <span style={{ fontSize:12, fontWeight:700, color:w.color }}>{w.label}</span>
+                              <span style={{ fontSize:12, color:'var(--muted)', marginLeft:6 }}>{w.desc}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Skill list */}
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {top5.map((sk, i) => {
+                        const col = PIE_COLORS[i]
+                        const lbl = profLabel(Math.round(sk.avg))
+                        const isDetail = top5DetailSkill === sk.id
+                        return (
+                          <div key={sk.id} style={{ borderRadius:10, border:`1px solid ${isDetail ? col+'66' : 'var(--border)'}`, overflow:'hidden' }}>
+                            {/* Row */}
+                            <div onClick={() => setTop5DetailSkill(isDetail ? null : sk.id)}
+                              style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', cursor:'pointer',
+                                background: isDetail ? col+'10' : 'transparent', transition:'background .15s' }}>
+                              <div style={{ width:28, height:28, borderRadius:8, background:col+'20', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                                <span style={{ fontSize:12, fontWeight:800, color:col }}>{i+1}</span>
                               </div>
-                              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                                <span style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>COVERAGE</span>
-                                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                                  <div style={{ width:44, height:4, borderRadius:99, background:'var(--border)', overflow:'hidden' }}>
-                                    <div style={{ width:`${sk.cov}%`, height:'100%', borderRadius:99,
-                                      background: sk.cov > 66 ? '#00c87a' : sk.cov > 33 ? '#ffc400' : '#ff4444' }} />
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontWeight:700, fontSize:14, color:'var(--ink)' }}>{sk.name}</div>
+                                <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>{sk.resources} individual{sk.resources !== 1 ? 's' : ''} · {lbl}</div>
+                              </div>
+                              {/* Score pill — click to toggle detail */}
+                              <div style={{ textAlign:'right' }}>
+                                <div style={{ fontSize:16, fontWeight:800, color:col }}>{(sk.score * 100).toFixed(0)}</div>
+                                <div style={{ fontSize:10, color:'var(--muted)' }}>score</div>
+                              </div>
+                              <span style={{ color:'var(--muted)', fontSize:14, transform: isDetail ? 'rotate(180deg)' : 'none', transition:'transform .2s', display:'block' }}>▾</span>
+                            </div>
+                            {/* Detail panel */}
+                            {isDetail && (
+                              <div style={{ padding:'12px 16px', borderTop:`1px solid ${col}33`, background:'var(--panel2)', display:'flex', flexDirection:'column', gap:8 }}>
+                                {[
+                                  { label:'Individuals (≥ Advanced)', val:`${sk.resources}`, sub:`of ${visibleIds.length} total`, color:'#f59e0b' },
+                                  { label:'Avg Level', val:`${sk.avg.toFixed(1)} — ${lbl}`, sub:'normalized to 0–1 for scoring', color:'#4a90d9' },
+                                  { label:'Coverage', val:`${sk.cov}%`, sub:'of team has rated this skill', color:'#00c87a' },
+                                ].map(row => (
+                                  <div key={row.label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                                    <div>
+                                      <span style={{ fontSize:11, fontWeight:700, color:row.color }}>{row.label}</span>
+                                      <div style={{ fontSize:10, color:'var(--muted)' }}>{row.sub}</div>
+                                    </div>
+                                    <span style={{ fontSize:14, fontWeight:800, color:row.color }}>{row.val}</span>
                                   </div>
-                                  <span style={{ fontSize:11, fontWeight:700, color: sk.cov > 66 ? '#00c87a' : sk.cov > 33 ? '#ffc400' : '#ff4444' }}>{sk.cov}%</span>
+                                ))}
+                                {/* Score breakdown */}
+                                <div style={{ marginTop:4, paddingTop:8, borderTop:`1px solid ${col}22`, fontSize:11, color:'var(--muted)', fontFamily:'monospace' }}>
+                                  {`(${sk.resources}/${maxRes})×0.50 + (${sk.avg.toFixed(1)}/4)×0.30 + (${sk.cov}/100)×0.20 = `}
+                                  <span style={{ color:col, fontWeight:700 }}>{(sk.score * 100).toFixed(1)}</span>
                                 </div>
                               </div>
-                              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                                <span style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>RESOURCES</span>
-                                <span style={{ fontSize:11, fontWeight:700, color:'var(--ink)' }}>{sk.resources} {sk.resources === 1 ? 'person' : 'people'}</span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-              }
-            </Card>
+                </div>
+              )}
+            </>
           )
         })()}
       </div>
