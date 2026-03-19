@@ -8,7 +8,7 @@ import {
   saveUserCerts, getUserCerts, onUserCertsSnapshot,
   getCategories, saveCategories,
   getCertsLibrary, saveCertsLibrary,
-  getInviteCode, saveInviteCode, getAnthropicKey, saveAnthropicKey,
+  getInviteCode, saveInviteCode, getRoleCodes, saveRoleCode, getAnthropicKey, saveAnthropicKey,
   savePendingUser, getPendingUserByEmail, deletePendingUser, onPendingUsersSnapshot,
 } from './firebase.js'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -259,7 +259,7 @@ export default function App() {
   // Real-time listeners (manager gets all, member gets own)
   useEffect(() => {
     if (!profile) return
-    if (['manager', 'lead'].includes(profile.role)) {
+    if (['admin','manager','lead'].includes(profile.role)) {
       const unsub1 = onAssessmentsSnapshot(setAssessments)
       const unsub2 = onUserCertsSnapshot(setUserCerts)
       const unsub3 = onSuggestionsSnapshot(setSuggestions)
@@ -319,7 +319,7 @@ export default function App() {
   return (
     <>
       <style>{STYLE}</style>
-      {['manager','lead'].includes(profile.role) ? <ManagerApp {...ctx} /> : <MemberApp {...ctx} />}
+      {['admin','manager','lead'].includes(profile.role) ? <ManagerApp {...ctx} /> : <MemberApp {...ctx} />}
     </>
   )
 }
@@ -353,15 +353,16 @@ function Login() {
     if (pass.length < 6)      return setErr('Password must be at least 6 characters.')
     setLoading(true)
     try {
-      // Verify invite code against Firestore before creating the account
-      const storedCode = await getInviteCode()
-      if (!storedCode) {
+      // Verify role-specific access code
+      const roleCodes = await getRoleCodes()
+      const expectedCode = roleCodes[role]
+      if (!expectedCode) {
         setLoading(false)
-        return setErr('Registration is currently disabled. Contact your administrator.')
+        return setErr(`Registration as ${role} is currently disabled. Contact your administrator.`)
       }
-      if (code.trim().toLowerCase() !== storedCode.toLowerCase()) {
+      if (code.trim().toLowerCase() !== expectedCode.toLowerCase()) {
         setLoading(false)
-        return setErr('Invalid access code. Please check with your administrator.')
+        return setErr('Invalid access code for the selected role. Please check with your administrator.')
       }
       const cred = await register(email, pass)
       // Check if a pending CV-imported or bulk-imported profile exists for this email
@@ -474,7 +475,8 @@ function Login() {
                   {[
                     { val: 'contributor', label: '👷 Contributor',       desc: 'Rate my own skills' },
                     { val: 'lead',        label: '🎯 Practice Lead',     desc: 'Lead + view team' },
-                    { val: 'manager',     label: '📊 Practice Manager',  desc: 'Full admin access' },
+                    { val: 'manager',     label: '📊 Practice Manager',  desc: 'Manage team & skills' },
+                    { val: 'admin',       label: '🔑 Admin',             desc: 'System administration' },
                   ].map(r => (
                     <div key={r.val} onClick={() => setRole(r.val)} style={{
                       padding: '10px 12px', borderRadius: 9, border: '2px solid',
@@ -565,7 +567,8 @@ function RoleSetup({ authUser, onComplete }) {
                 {[
                   { val: 'contributor', label: '👷 Contributor',      desc: 'I rate my own skills' },
                   { val: 'lead',        label: '🎯 Practice Lead',    desc: 'Lead + view team' },
-                  { val: 'manager',     label: '📊 Practice Manager', desc: 'Full admin access' },
+                  { val: 'manager',     label: '📊 Practice Manager', desc: 'Manage team & skills' },
+                  { val: 'admin',       label: '🔑 Admin',            desc: 'System administration' },
                 ].map(r => (
                   <div key={r.val} onClick={() => setRole(r.val)} style={{
                     padding: '14px 16px', borderRadius: 10, border: '2px solid',
@@ -1409,6 +1412,7 @@ function DomainView({ assessments, categories }) {
 
 // ─── People Panel ────────────────────────────────────────────────────────────
 const ROLES = [
+  { val: 'admin',       label: 'Admin',                color: '#f59e0b' },
   { val: 'manager',     label: 'Practice Manager',     color: '#e00080' },
   { val: 'lead',        label: 'Practice Lead',        color: '#7c3aed' },
   { val: 'contributor', label: 'Practice Contributor', color: '#0ea5e9' },
@@ -1577,7 +1581,7 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
   const [newCertId,    setNewCertId]    = useState('')
   const [newCertStatus,setNewCertStatus]= useState('Earned')
 
-  const canEdit = currentUser.role === 'manager'
+  const canEdit = ['admin','manager'].includes(currentUser.role)
   const profLabels = ['Any','Awareness','Working','Advanced','Expert']
 
   // ── Roster helpers ───────────────────────────────────────────────────────
@@ -1699,11 +1703,12 @@ function PeoplePanel({ allUsers, assessments, userCerts, categories, certs, user
           {/* Role */}
           <div>
             <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', display:'block', marginBottom:6 }}>Role</label>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
               {[
                 { val:'contributor', label:'Contributor' },
                 { val:'lead',        label:'Practice Lead' },
                 { val:'manager',     label:'Manager' },
+                { val:'admin',       label:'Admin' },
               ].map(r => (
                 <div key={r.val} onClick={() => setEditFields(f => ({ ...f, role: r.val }))}
                   style={{ padding:'8px 10px', borderRadius:8, border:'2px solid', borderColor: editFields.role===r.val ? 'var(--accent)' : 'var(--border)', background: editFields.role===r.val ? '#e0008015' : 'transparent', cursor:'pointer', textAlign:'center', fontSize:12, fontWeight:600, transition:'all .15s' }}>
@@ -2541,31 +2546,37 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
   const [newCertProv, setNewCertProv] = useState('')
   const [newCertLvl,  setNewCertLvl]  = useState('')
   const [adminTab,    setAdminTab]    = useState('skills')
-  const [exporting,   setExporting]   = useState(false)
-  const [inviteCode,  setInviteCode]  = useState('')
-  const [codeInput,   setCodeInput]   = useState('')
-  const [codeSaved,   setCodeSaved]   = useState(false)
-  const [codeLoading, setCodeLoading] = useState(false)
-  const [codeVisible, setCodeVisible] = useState(false)
-  const [anthropicKey,    setAnthropicKey]    = useState('')
-  const [anthropicInput,  setAnthropicInput]  = useState('')
-  const [anthropicSaved,  setAnthropicSaved]  = useState(false)
-  const [anthropicLoading,setAnthropicLoading]= useState(false)
-  const [anthropicVisible,setAnthropicVisible]= useState(false)
+  const [exporting,        setExporting]        = useState(false)
+  const [roleCodes,        setRoleCodes]        = useState({ contributor: '', lead: '', manager: '', admin: '' })
+  const [roleInputs,       setRoleInputs]       = useState({ contributor: '', lead: '', manager: '', admin: '' })
+  const [roleSaved,        setRoleSaved]        = useState({})
+  const [roleLoading,      setRoleLoading]      = useState({})
+  const [roleVisible,      setRoleVisible]      = useState({})
+  const [roleExpanded,     setRoleExpanded]     = useState({})
+  const [anthropicKey,     setAnthropicKey]     = useState('')
+  const [anthropicInput,   setAnthropicInput]   = useState('')
+  const [anthropicSaved,   setAnthropicSaved]   = useState(false)
+  const [anthropicLoading, setAnthropicLoading] = useState(false)
+  const [anthropicVisible, setAnthropicVisible] = useState(false)
+  const [anthropicExpanded,setAnthropicExpanded]= useState(false)
 
   useEffect(() => {
-    getInviteCode().then(c => { if (c) { setInviteCode(c); setCodeInput(c) } })
+    getRoleCodes().then(codes => {
+      setRoleCodes(codes)
+      setRoleInputs({ contributor: codes.contributor||'', lead: codes.lead||'', manager: codes.manager||'', admin: codes.admin||'' })
+    })
     getAnthropicKey().then(k => { if (k) { setAnthropicKey(k); setAnthropicInput(k) } })
   }, [])
 
-  const handleSaveCode = async () => {
-    if (!codeInput.trim()) return
-    setCodeLoading(true)
-    await saveInviteCode(codeInput.trim())
-    setInviteCode(codeInput.trim())
-    setCodeSaved(true)
-    setCodeLoading(false)
-    setTimeout(() => setCodeSaved(false), 2500)
+  const handleSaveRoleCode = async (role) => {
+    const val = roleInputs[role]?.trim()
+    if (!val) return
+    setRoleLoading(l => ({ ...l, [role]: true }))
+    await saveRoleCode(role, val)
+    setRoleCodes(c => ({ ...c, [role]: val }))
+    setRoleSaved(s => ({ ...s, [role]: true }))
+    setRoleLoading(l => ({ ...l, [role]: false }))
+    setTimeout(() => setRoleSaved(s => ({ ...s, [role]: false })), 2500)
   }
 
   const handleSaveAnthropicKey = async () => {
@@ -2716,13 +2727,13 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
       <div style={{ display: 'flex', gap: 4, borderBottom: '1.5px solid var(--border)', paddingBottom: 4 }}>
         <button style={tabStyle('skills')} onClick={() => setAdminTab('skills')}>Skills Library</button>
         <button style={tabStyle('certs')}  onClick={() => setAdminTab('certs')}>Certifications</button>
-        {user?.role === 'manager' && (
+        {['admin','manager'].includes(user?.role) && (
           <button style={tabStyle('cv')} onClick={() => setAdminTab('cv')}>CV Import</button>
         )}
-        {user?.role === 'manager' && (
+        {user?.role === 'admin' && (
           <button style={tabStyle('access')} onClick={() => setAdminTab('access')}>Access Code</button>
         )}
-        {user?.role === 'manager' && (
+        {user?.role === 'admin' && (
           <button style={tabStyle('export')} onClick={() => setAdminTab('export')}>Export Data</button>
         )}
       </div>
@@ -2790,7 +2801,7 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
         </div>
       )}
 
-      {adminTab === 'cv' && user?.role === 'manager' && (
+      {adminTab === 'cv' && ['admin','manager'].includes(user?.role) && (
         <CVScanner
           categories={categories}
           certs={certs}
@@ -2799,107 +2810,155 @@ function AdminPanel({ categories, setCategories, certs, setCerts, allUsers, asse
         />
       )}
 
-      {adminTab === 'access' && user?.role === 'manager' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 540 }}>
-          <Card style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: '#e0008018', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 22 }}>🔐</div>
-              <div>
-                <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 18, marginBottom: 4 }}>Company Access Code</div>
-                <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-                  New users must enter this code when creating an account. Share it only with employees you want to grant access. Change it anytime to invalidate old codes — existing users are unaffected.
-                </p>
-              </div>
-            </div>
+      {adminTab === 'access' && user?.role === 'admin' && (() => {
+        const roleConfig = [
+          { role: 'contributor', label: 'Contributor',     icon: '👷', color: '#0ea5e9', desc: 'Standard team members who rate their own skills' },
+          { role: 'lead',        label: 'Practice Lead',   icon: '🎯', color: '#7c3aed', desc: 'Leads with access to team dashboards and heatmaps' },
+          { role: 'manager',     label: 'Practice Manager',icon: '📊', color: '#e00080', desc: 'Managers with full team management and CV import access' },
+          { role: 'admin',       label: 'Admin',           icon: '🔑', color: '#f59e0b', desc: 'System administrators — access codes, API keys, exports' },
+        ]
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 580 }}>
+            <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 4 }}>
+              Each role has its own access code. Users must select their role and enter the matching code to register.
+              Leave a code blank to disable registration for that role.
+            </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Current Access Code</label>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <div style={{ flex: 1, position: 'relative' }}>
-                  <input
-                    type={codeVisible ? 'text' : 'password'}
-                    value={codeInput}
-                    onChange={e => setCodeInput(e.target.value)}
-                    placeholder="Set an access code…"
-                    style={{ width: '100%', padding: '10px 44px 10px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--panel2)', color: 'var(--ink)', fontSize: 15, fontFamily: 'Courier New, monospace', outline: 'none', boxSizing: 'border-box' }}
-                    onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                    onKeyDown={e => e.key === 'Enter' && handleSaveCode()}
-                  />
-                  <button onClick={() => setCodeVisible(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16, padding: 4 }}>
-                    {codeVisible ? '🙈' : '👁️'}
-                  </button>
+            {roleConfig.map(({ role, label, icon, color, desc }) => {
+              const isOpen   = roleExpanded[role]
+              const hasCode  = !!roleCodes[role]
+              return (
+                <Card key={role} style={{ padding: 0, overflow: 'hidden', border: isOpen ? `1px solid ${color}44` : '1px solid var(--border)' }}>
+                  {/* Header row — always visible */}
+                  <div onClick={() => setRoleExpanded(e => ({ ...e, [role]: !e[role] }))}
+                    style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', cursor: 'pointer',
+                      background: isOpen ? color + '10' : 'transparent', transition: 'background .15s' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: color + '20',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
+                      {icon}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>{label}</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>{desc}</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      {hasCode
+                        ? <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
+                            background: '#00d08418', color: '#00d084', border: '1px solid #00d08444' }}>✓ Code set</span>
+                        : <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
+                            background: '#ff444418', color: '#ff6666', border: '1px solid #ff444444' }}>⚠ No code</span>
+                      }
+                      <span style={{ color: 'var(--muted)', fontSize: 16, transition: 'transform .2s',
+                        display: 'inline-block', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+                    </div>
+                  </div>
+
+                  {/* Expanded body */}
+                  {isOpen && (
+                    <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: 10,
+                      borderTop: '1px solid var(--border)' }}>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase',
+                        letterSpacing: '.06em', marginTop: 14, display: 'block' }}>Access Code for {label}</label>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <div style={{ flex: 1, position: 'relative' }}>
+                          <input
+                            type={roleVisible[role] ? 'text' : 'password'}
+                            value={roleInputs[role] || ''}
+                            onChange={e => setRoleInputs(i => ({ ...i, [role]: e.target.value }))}
+                            placeholder={`Set a code for ${label} registration…`}
+                            style={{ width: '100%', padding: '10px 44px 10px 14px', borderRadius: 9,
+                              border: '1px solid var(--border)', background: 'var(--panel2)', color: 'var(--ink)',
+                              fontSize: 14, fontFamily: 'Courier New, monospace', outline: 'none', boxSizing: 'border-box' }}
+                            onFocus={e => e.target.style.borderColor = color}
+                            onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                            onKeyDown={e => e.key === 'Enter' && handleSaveRoleCode(role)}
+                          />
+                          <button onClick={() => setRoleVisible(v => ({ ...v, [role]: !v[role] }))}
+                            style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                              background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16, padding: 4 }}>
+                            {roleVisible[role] ? '🙈' : '👁️'}
+                          </button>
+                        </div>
+                        <button onClick={() => handleSaveRoleCode(role)}
+                          disabled={roleLoading[role] || !roleInputs[role]?.trim()}
+                          style={{ padding: '10px 18px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                            background: color, color: '#fff', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap',
+                            opacity: (roleLoading[role] || !roleInputs[role]?.trim()) ? 0.5 : 1, transition: 'opacity .15s' }}>
+                          {roleLoading[role] ? 'Saving…' : roleSaved[role] ? '✓ Saved!' : 'Save'}
+                        </button>
+                      </div>
+                      <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>
+                        Share this code only with people you want to register as <strong>{label}</strong>.
+                        Leave blank to block {label} registration entirely.
+                      </p>
+                    </div>
+                  )}
+                </Card>
+              )
+            })}
+
+            {/* Anthropic API Key — collapsible */}
+            <Card style={{ padding: 0, overflow: 'hidden', marginTop: 8,
+              border: anthropicExpanded ? '1px solid #e0008044' : '1px solid var(--border)' }}>
+              <div onClick={() => setAnthropicExpanded(e => !e)}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', cursor: 'pointer',
+                  background: anthropicExpanded ? '#e0008010' : 'transparent', transition: 'background .15s' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#e0008020',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>🤖</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 14 }}>Anthropic API Key</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>Required for CV Import feature</div>
                 </div>
-                <Btn onClick={handleSaveCode} disabled={codeLoading || !codeInput.trim()} style={{ whiteSpace: 'nowrap' }}>
-                  {codeLoading ? 'Saving…' : codeSaved ? '✓ Saved!' : 'Save Code'}
-                </Btn>
-              </div>
-              {inviteCode && (
-                <p style={{ fontSize: 12, color: 'var(--muted)' }}>
-                  A code is currently set. Users must enter it exactly (case-insensitive) when registering.
-                </p>
-              )}
-              {!inviteCode && (
-                <p style={{ fontSize: 12, color: 'var(--danger)' }}>
-                  ⚠️ No access code is set — registration is currently blocked for all new users.
-                </p>
-              )}
-            </div>
-          </Card>
-
-          <Card style={{ padding: '20px 24px', background: '#1f1a00', border: '1px solid #ffc40033' }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: '#ffc400', marginBottom: 8 }}>💡 Tips</div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
-              • Use something memorable but not guessable (e.g. <span style={{ fontFamily: 'monospace', color: 'var(--ink)' }}>byond-skills-2025</span>)<br />
-              • Share it via a private Slack message or email — not in public channels<br />
-              • Rotate it periodically or after someone leaves the company<br />
-              • Changing the code does not affect existing logged-in users
-            </div>
-          </Card>
-
-          {/* Anthropic API Key */}
-          <Card style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: '#e0008018', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 22 }}>🤖</div>
-              <div>
-                <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 18, marginBottom: 4 }}>Anthropic API Key</div>
-                <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-                  Required for the CV Import feature. Get your key from <span style={{ color: 'var(--accent)' }}>console.anthropic.com</span> → API Keys.
-                </p>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>API Key</label>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <div style={{ flex: 1, position: 'relative' }}>
-                  <input
-                    type={anthropicVisible ? 'text' : 'password'}
-                    value={anthropicInput}
-                    onChange={e => setAnthropicInput(e.target.value)}
-                    placeholder="sk-ant-api03-..."
-                    style={{ width: '100%', padding: '10px 44px 10px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--panel2)', color: 'var(--ink)', fontSize: 13, fontFamily: 'Courier New, monospace', outline: 'none', boxSizing: 'border-box' }}
-                    onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                    onKeyDown={e => e.key === 'Enter' && handleSaveAnthropicKey()}
-                  />
-                  <button onClick={() => setAnthropicVisible(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16, padding: 4 }}>
-                    {anthropicVisible ? '🙈' : '👁️'}
-                  </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {anthropicKey
+                    ? <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
+                        background: '#00d08418', color: '#00d084', border: '1px solid #00d08444' }}>✓ Key set</span>
+                    : <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
+                        background: '#ff444418', color: '#ff6666', border: '1px solid #ff444444' }}>⚠ Not set</span>
+                  }
+                  <span style={{ color: 'var(--muted)', fontSize: 16, transition: 'transform .2s',
+                    display: 'inline-block', transform: anthropicExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
                 </div>
-                <Btn onClick={handleSaveAnthropicKey} disabled={anthropicLoading || !anthropicInput.trim()} style={{ whiteSpace: 'nowrap' }}>
-                  {anthropicLoading ? 'Saving…' : anthropicSaved ? '✓ Saved!' : 'Save Key'}
-                </Btn>
               </div>
-              {anthropicKey
-                ? <p style={{ fontSize: 12, color: '#00d084' }}>✓ API key is set — CV Import is ready to use.</p>
-                : <p style={{ fontSize: 12, color: 'var(--danger)' }}>⚠️ No API key set — CV Import will not work until you save one.</p>
-              }
-            </div>
-          </Card>
-        </div>
-      )}
+              {anthropicExpanded && (
+                <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: 10,
+                  borderTop: '1px solid var(--border)' }}>
+                  <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginTop: 14 }}>
+                    Get your key from <span style={{ color: 'var(--accent)' }}>console.anthropic.com</span> → API Keys.
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ flex: 1, position: 'relative' }}>
+                      <input
+                        type={anthropicVisible ? 'text' : 'password'}
+                        value={anthropicInput}
+                        onChange={e => setAnthropicInput(e.target.value)}
+                        placeholder="sk-ant-api03-…"
+                        style={{ width: '100%', padding: '10px 44px 10px 14px', borderRadius: 9,
+                          border: '1px solid var(--border)', background: 'var(--panel2)', color: 'var(--ink)',
+                          fontSize: 13, fontFamily: 'Courier New, monospace', outline: 'none', boxSizing: 'border-box' }}
+                        onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                        onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                        onKeyDown={e => e.key === 'Enter' && handleSaveAnthropicKey()}
+                      />
+                      <button onClick={() => setAnthropicVisible(v => !v)}
+                        style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                          background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16, padding: 4 }}>
+                        {anthropicVisible ? '🙈' : '👁️'}
+                      </button>
+                    </div>
+                    <Btn onClick={handleSaveAnthropicKey} disabled={anthropicLoading || !anthropicInput.trim()} style={{ whiteSpace: 'nowrap' }}>
+                      {anthropicLoading ? 'Saving…' : anthropicSaved ? '✓ Saved!' : 'Save Key'}
+                    </Btn>
+                  </div>
+                </div>
+              )}
+            </Card>
+          </div>
+        )
+      })()}
 
-      {adminTab === 'export' && user?.role === 'manager' && (
+
+      {adminTab === 'export' && user?.role === 'admin' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Card style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>

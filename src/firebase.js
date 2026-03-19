@@ -110,7 +110,22 @@ export const getCertsLibrary = async () => {
 }
 export const saveCertsLibrary = (list) => setDoc(doc(db, 'config', 'certsLibrary'), { list })
 
-// ─── Invite Code ─────────────────────────────────────────────────────────────
+// ─── Role Access Codes ────────────────────────────────────────────────────────
+export const getRoleCodes = async () => {
+  const snap = await getDoc(doc(db, 'config', 'settings'))
+  if (!snap.exists()) return {}
+  const d = snap.data()
+  return {
+    contributor: d.contributorCode || null,
+    lead:        d.leadCode        || null,
+    manager:     d.managerCode     || null,
+    admin:       d.adminCode       || null,
+  }
+}
+export const saveRoleCode = (role, code) =>
+  setDoc(doc(db, 'config', 'settings'), { [`${role}Code`]: code }, { merge: true })
+
+// ─── Invite Code (legacy) ────────────────────────────────────────────────────
 export const getInviteCode = async () => {
   const snap = await getDoc(doc(db, 'config', 'settings'))
   return snap.exists() ? (snap.data().inviteCode || null) : null
