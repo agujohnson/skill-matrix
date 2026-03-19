@@ -1384,14 +1384,14 @@ function Heatmap({ assessments, categories, allUsers }) {
             </div>
 
             {/* Chart SVG */}
-            <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow:'visible', display:'block' }}
+            <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow:'visible', display:'block', fontFamily:'inherit' }}
               onMouseLeave={() => setBubbleHover(null)}>
               {quadrants.map((q,i) => (
                 <rect key={i} x={q.x} y={q.y} width={q.w} height={q.h} fill={q.color} opacity={q.opacity}/>
               ))}
               {quadrants.map((q,i) => (
                 <text key={i+'l'} x={q.x+q.w/2} y={q.y+q.h/2} textAnchor="middle" dominantBaseline="middle"
-                  style={{ fontSize:11, fill:q.color, fontWeight:600, opacity:0.4, fontFamily:'Space Grotesk, sans-serif', pointerEvents:'none' }}>
+                  style={{ fontSize:10, fill:q.color, fontWeight:400, opacity:0.3, pointerEvents:'none' }}>
                   {q.label}
                 </text>
               ))}
@@ -1403,21 +1403,21 @@ function Heatmap({ assessments, categories, allUsers }) {
                 <g key={v}>
                   <line x1={xPos(v)} y1={PAD.t+chartH} x2={xPos(v)} y2={PAD.t+chartH+4} stroke="var(--border)" strokeWidth="1"/>
                   <text x={xPos(v)} y={PAD.t+chartH+13} textAnchor="middle"
-                    style={{ fontSize:10, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>{v}%</text>
+                    style={{ fontSize:9, fill:'var(--muted)' }}>{v}%</text>
                 </g>
               ))}
               {[0,25,50,75,100].map(v => (
                 <g key={v}>
                   <line x1={PAD.l-3} y1={yPos(v)} x2={PAD.l} y2={yPos(v)} stroke="var(--border)" strokeWidth="1"/>
                   <text x={PAD.l-6} y={yPos(v)} textAnchor="end" dominantBaseline="middle"
-                    style={{ fontSize:10, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>{v}</text>
+                    style={{ fontSize:9, fill:'var(--muted)' }}>{v}</text>
                 </g>
               ))}
               <text x={PAD.l+chartW/2} y={H-3} textAnchor="middle"
-                style={{ fontSize:10, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>Coverage %</text>
+                style={{ fontSize:9, fill:'var(--muted)' }}>Coverage %</text>
               <text x={9} y={PAD.t+chartH/2} textAnchor="middle" dominantBaseline="middle"
                 transform={`rotate(-90, 9, ${PAD.t+chartH/2})`}
-                style={{ fontSize:10, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>Proficiency</text>
+                style={{ fontSize:9, fill:'var(--muted)' }}>Proficiency</text>
 
               {/* Bubbles — no labels, just color + size + interaction */}
               {bubbles.map(b => {
