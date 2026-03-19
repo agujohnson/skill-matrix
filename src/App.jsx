@@ -798,7 +798,7 @@ function MemberSkills({ user, categories, assessments, setAssessment }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <div style={{ width: 10, height: 10, borderRadius: 3, background: cat.color }} />
             <h3 style={{ fontSize: 15, fontWeight: 700 }}>{cat.name}</h3>
-            <button onClick={() => setModal({ domainId: cat.id, domainName: cat.name })} style={{
+            <button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); setModal({ domainId: cat.id, domainName: cat.name }) }} style={{
               marginLeft: 'auto', fontSize: 12, color: 'var(--accent)', background: 'none',
               border: '1px solid var(--accent)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer',
               fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600,
@@ -899,7 +899,7 @@ function MemberCerts({ user, certs, userCerts, setUserCerts }) {
           <h1 style={{ fontSize: 26, fontWeight: 800 }}>My Certifications</h1>
           <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Mark certifications you've earned or are working toward.</p>
         </div>
-        <button onClick={() => setShowCertModal(true)} style={{
+        <button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); setShowCertModal(true) }} style={{
           fontSize: 13, color: 'var(--accent)', background: 'none',
           border: '1px solid var(--accent)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer',
           fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600,
