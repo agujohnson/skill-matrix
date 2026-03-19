@@ -1011,6 +1011,7 @@ function Heatmap({ assessments, categories, allUsers }) {
 
   const [drillSkill, setDrillSkill] = useState(null)
   const [filterPractice, setFilterPractice] = useState('all')
+  const [filterLevel,    setFilterLevel]    = useState(0)
   const [expandedSkill,  setExpandedSkill]  = useState(null)
   const [top5Modal,       setTop5Modal]       = useState(false)
   const [top5DetailSkill, setTop5DetailSkill] = useState(null)
@@ -1099,21 +1100,28 @@ function Heatmap({ assessments, categories, allUsers }) {
         </div>
       )}
 
-      {/* Header + practice filter */}
+      {/* Header + filters */}
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800 }}>Skills Heatmap</h1>
           <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Proficiency distribution across the team. <span style={{ color:'var(--accent)' }}>Click any skill to see who has it →</span></p>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <span style={{ fontSize:12, color:'var(--muted)', fontWeight:600 }}>Filter by practice:</span>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <select value={filterPractice} onChange={e => setFilterPractice(e.target.value)}
             style={{ padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', fontSize:13, minWidth:200 }}>
-            <option value="all">All Practices ({memberIds.length} people)</option>
+            <option value="all">All Practices ({memberIds.length} members)</option>
             {PRACTICES.map(p => {
               const count = memberIds.filter(uid => userById[uid]?.team === p).length
               return count > 0 ? <option key={p} value={p}>{p} ({count})</option> : null
             })}
+          </select>
+          <select value={filterLevel} onChange={e => setFilterLevel(Number(e.target.value))}
+            style={{ padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel2)', fontSize:13, minWidth:190 }}>
+            <option value={0}>All proficiency levels</option>
+            <option value={1}>1 – Awareness (basic knowledge)</option>
+            <option value={2}>2 – Working (can do with guidance)</option>
+            <option value={3}>3 – Advanced (works independently)</option>
+            <option value={4}>4 – Expert (leads & mentors others)</option>
           </select>
         </div>
       </div>
@@ -1307,6 +1315,112 @@ function Heatmap({ assessments, categories, allUsers }) {
         })()}
       </div>
 
+      {/* Coverage vs Proficiency bubble chart */}
+      {(() => {
+        const allSkills = categories.flatMap(cat => cat.skills.map(sk => ({ ...sk, catColor: cat.color, catName: cat.name })))
+        const bubbles = allSkills.map(sk => {
+          const avg    = avgProf(sk.id)
+          const cov    = coverage(sk.id)
+          const raters = visibleIds.filter(uid => (assessments[uid]?.[sk.id]?.prof || 0) > 0).length
+          const weightedProf = avg > 0 ? ((avg / 4) * 100) : 0
+          const criticality  = raters * avg
+          return { ...sk, avg, cov, raters, weightedProf, criticality }
+        }).filter(sk => sk.raters > 0)
+
+        if (bubbles.length === 0) return null
+
+        const maxCrit = Math.max(...bubbles.map(b => b.criticality), 1)
+        const W = 680, H = 320
+        const PAD = { l: 52, r: 20, t: 20, b: 44 }
+        const chartW = W - PAD.l - PAD.r
+        const chartH = H - PAD.t - PAD.b
+        const xPos = cov => PAD.l + (cov / 100) * chartW
+        const yPos = wp  => PAD.t + chartH - (wp / 100) * chartH
+        const bSize = crit => 6 + (crit / maxCrit) * 18
+        const riskColor = cov => cov < 30 ? '#ff4444' : cov < 60 ? '#ffc400' : '#00c87a'
+        const quadrants = [
+          { x: PAD.l,          y: PAD.t,          w: chartW/2, h: chartH/2, label: 'Niche strengths',   color: '#4a90d9', opacity: 0.04 },
+          { x: PAD.l+chartW/2, y: PAD.t,          w: chartW/2, h: chartH/2, label: 'Strong areas',      color: '#00c87a', opacity: 0.06 },
+          { x: PAD.l,          y: PAD.t+chartH/2, w: chartW/2, h: chartH/2, label: 'Priority gaps',     color: '#ff4444', opacity: 0.05 },
+          { x: PAD.l+chartW/2, y: PAD.t+chartH/2, w: chartW/2, h: chartH/2, label: 'Broad but shallow', color: '#ffc400', opacity: 0.04 },
+        ]
+        return (
+          <Card style={{ padding: '16px 20px' }}>
+            <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:12, flexWrap:'wrap', gap:8 }}>
+              <div>
+                <span style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:15 }}>Coverage vs Proficiency</span>
+                <span style={{ fontSize:12, color:'var(--muted)', marginLeft:10 }}>{bubbles.length} skills with coverage data</span>
+              </div>
+              <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
+                {[['#ff4444','< 30% — fragile'],['#ffc400','30–60% — moderate'],['#00c87a','> 60% — strong']].map(([c,l]) => (
+                  <div key={c} style={{ display:'flex', alignItems:'center', gap:5 }}>
+                    <div style={{ width:8, height:8, borderRadius:99, background:c }} />
+                    <span style={{ fontSize:11, color:'var(--muted)' }}>{l}</span>
+                  </div>
+                ))}
+                <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                  <svg width="28" height="14" viewBox="0 0 28 14">
+                    <circle cx="5" cy="7" r="4" fill="none" stroke="var(--muted)" strokeWidth="1.2"/>
+                    <circle cx="20" cy="7" r="7" fill="none" stroke="var(--muted)" strokeWidth="1.2"/>
+                  </svg>
+                  <span style={{ fontSize:11, color:'var(--muted)' }}>size = criticality</span>
+                </div>
+              </div>
+            </div>
+            <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow:'visible' }}>
+              {quadrants.map((q,i) => (
+                <rect key={i} x={q.x} y={q.y} width={q.w} height={q.h} fill={q.color} opacity={q.opacity} />
+              ))}
+              {quadrants.map((q,i) => (
+                <text key={i+'l'} x={q.x+q.w/2} y={q.y+q.h/2} textAnchor="middle" dominantBaseline="middle"
+                  style={{ fontSize:11, fill:q.color, fontWeight:600, opacity:0.45, fontFamily:'Space Grotesk, sans-serif', pointerEvents:'none' }}>
+                  {q.label}
+                </text>
+              ))}
+              <line x1={PAD.l} y1={PAD.t+chartH/2} x2={PAD.l+chartW} y2={PAD.t+chartH/2} stroke="var(--border)" strokeWidth="1" strokeDasharray="4 3"/>
+              <line x1={PAD.l+chartW/2} y1={PAD.t} x2={PAD.l+chartW/2} y2={PAD.t+chartH} stroke="var(--border)" strokeWidth="1" strokeDasharray="4 3"/>
+              <line x1={PAD.l} y1={PAD.t} x2={PAD.l} y2={PAD.t+chartH} stroke="var(--border)" strokeWidth="1"/>
+              <line x1={PAD.l} y1={PAD.t+chartH} x2={PAD.l+chartW} y2={PAD.t+chartH} stroke="var(--border)" strokeWidth="1"/>
+              {[0,25,50,75,100].map(v => (
+                <g key={v}>
+                  <line x1={xPos(v)} y1={PAD.t+chartH} x2={xPos(v)} y2={PAD.t+chartH+4} stroke="var(--border)" strokeWidth="1"/>
+                  <text x={xPos(v)} y={PAD.t+chartH+14} textAnchor="middle"
+                    style={{ fontSize:10, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>{v}%</text>
+                </g>
+              ))}
+              {[0,25,50,75,100].map(v => (
+                <g key={v}>
+                  <line x1={PAD.l-4} y1={yPos(v)} x2={PAD.l} y2={yPos(v)} stroke="var(--border)" strokeWidth="1"/>
+                  <text x={PAD.l-8} y={yPos(v)} textAnchor="end" dominantBaseline="middle"
+                    style={{ fontSize:10, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>{v}</text>
+                </g>
+              ))}
+              <text x={PAD.l+chartW/2} y={H-4} textAnchor="middle"
+                style={{ fontSize:11, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>Coverage %</text>
+              <text x={10} y={PAD.t+chartH/2} textAnchor="middle" dominantBaseline="middle"
+                transform={`rotate(-90, 10, ${PAD.t+chartH/2})`}
+                style={{ fontSize:11, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>Proficiency</text>
+              {bubbles.map(b => {
+                const cx = xPos(b.cov), cy = yPos(b.weightedProf), r = bSize(b.criticality)
+                const col = riskColor(b.cov)
+                return (
+                  <g key={b.id} style={{ cursor:'pointer' }} onClick={() => setDrillSkill({ id:b.id, name:b.name, catColor:b.catColor })}>
+                    <circle cx={cx} cy={cy} r={r} fill={col} opacity={0.75} stroke={col} strokeWidth="1"/>
+                    {r > 14 && (
+                      <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
+                        style={{ fontSize:9, fill:'#fff', fontWeight:600, pointerEvents:'none', fontFamily:'Space Grotesk, sans-serif' }}>
+                        {b.name.length > 10 ? b.name.substring(0,9)+'…' : b.name}
+                      </text>
+                    )}
+                    <title>{b.name} — Coverage: {b.cov}% · Proficiency: {b.avg.toFixed(1)} · Raters: {b.raters}</title>
+                  </g>
+                )
+              })}
+            </svg>
+          </Card>
+        )
+      })()}
+
       {/* Matrix table — rows=skills, cols=proficiency levels */}
       <Card style={{ padding: 0, overflow: 'auto' }}>
         <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
@@ -1333,7 +1447,11 @@ function Heatmap({ assessments, categories, allUsers }) {
                     {cat.name}
                   </td>
                 </tr>
-                {cat.skills.map(sk => {
+                {cat.skills.filter(sk => {
+                  if (filterLevel === 0) return true
+                  const counts = levelCounts(sk.id)
+                  return counts[filterLevel] > 0
+                }).map(sk => {
                   const counts  = levelCounts(sk.id)
                   const avg     = avgProf(sk.id)
                   const cov     = coverage(sk.id)
