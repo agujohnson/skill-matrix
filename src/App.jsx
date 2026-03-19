@@ -1009,8 +1009,9 @@ function Heatmap({ assessments, categories, allUsers }) {
   const profBg       = v => ['#1e1e2a','#0d1a2e11','#0a1f1811','#1f1a0011','#2a0a1a11'][v] || '#1e1e2a'
   const profLabel    = v => ['N/A','Awareness','Working','Advanced','Expert'][v] || 'N/A'
 
-  const [drillSkill, setDrillSkill] = useState(null)
+  const [drillSkill,     setDrillSkill]     = useState(null)
   const [filterPractice, setFilterPractice] = useState('all')
+  const [expandedSkill,  setExpandedSkill]  = useState(null)
   const userById = Object.fromEntries((allUsers||[]).map(u => [u.id, u]))
 
   // Filter memberIds by practice if selected
@@ -1128,7 +1129,6 @@ function Heatmap({ assessments, categories, allUsers }) {
           .filter(sk => sk.avg >= 3 && sk.avg <= 4 && sk.resources > 0)
           .sort((a, b) => (b.cov - a.cov) || (b.avg - a.avg))
           .slice(0, 5)
-        const [expandedSkill, setExpandedSkill] = React.useState(null)
         return (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
             {[
