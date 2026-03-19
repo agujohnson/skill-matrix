@@ -1322,22 +1322,34 @@ function Heatmap({ assessments, categories, allUsers }) {
           const avg    = avgProf(sk.id)
           const cov    = coverage(sk.id)
           const raters = visibleIds.filter(uid => (assessments[uid]?.[sk.id]?.prof || 0) > 0).length
-          const weightedProf = avg > 0 ? ((avg / 4) * 100) : 0
+          const weightedProf = avg > 0 ? (avg / 4) * 100 : 0
           const criticality  = raters * avg
-          return { ...sk, avg, cov, raters, weightedProf, criticality }
+          // Deterministic jitter from skill id string hash
+          let hash = 0
+          for (let i = 0; i < sk.id.length; i++) hash = (hash * 31 + sk.id.charCodeAt(i)) & 0xffffffff
+          const jitterX = ((hash & 0xff) / 255 - 0.5) * 3.5  // ±1.75% coverage
+          const jitterY = (((hash >> 8) & 0xff) / 255 - 0.5) * 3.5
+          return { ...sk, avg, cov, raters, weightedProf, criticality, jitterX, jitterY }
         }).filter(sk => sk.raters > 0)
 
         if (bubbles.length === 0) return null
 
         const maxCrit = Math.max(...bubbles.map(b => b.criticality), 1)
-        const W = 680, H = 320
-        const PAD = { l: 52, r: 20, t: 20, b: 44 }
+        const W = 680, H = 300
+        const PAD = { l: 48, r: 16, t: 16, b: 40 }
         const chartW = W - PAD.l - PAD.r
         const chartH = H - PAD.t - PAD.b
-        const xPos = cov => PAD.l + (cov / 100) * chartW
-        const yPos = wp  => PAD.t + chartH - (wp / 100) * chartH
-        const bSize = crit => 6 + (crit / maxCrit) * 18
+        const xPos  = cov => PAD.l + ((cov) / 100) * chartW
+        const yPos  = wp  => PAD.t + chartH - (wp / 100) * chartH
+        const bSize = crit => 4 + (crit / maxCrit) * 10   // max 14px radius
         const riskColor = cov => cov < 30 ? '#ff4444' : cov < 60 ? '#ffc400' : '#00c87a'
+        const profLabelFn = v => ['N/A','Awareness','Working','Advanced','Expert'][Math.round(v)] || ''
+        const quadrantFor = (cov, wp) => {
+          if (cov >= 50 && wp >= 50) return 'Strong area'
+          if (cov <  50 && wp >= 50) return 'Niche strength'
+          if (cov >= 50 && wp <  50) return 'Broad but shallow'
+          return 'Priority gap'
+        }
         const quadrants = [
           { x: PAD.l,          y: PAD.t,          w: chartW/2, h: chartH/2, label: 'Niche strengths',   color: '#4a90d9', opacity: 0.04 },
           { x: PAD.l+chartW/2, y: PAD.t,          w: chartW/2, h: chartH/2, label: 'Strong areas',      color: '#00c87a', opacity: 0.06 },
@@ -1345,13 +1357,14 @@ function Heatmap({ assessments, categories, allUsers }) {
           { x: PAD.l+chartW/2, y: PAD.t+chartH/2, w: chartW/2, h: chartH/2, label: 'Broad but shallow', color: '#ffc400', opacity: 0.04 },
         ]
         return (
-          <Card style={{ padding: '16px 20px' }}>
-            <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:12, flexWrap:'wrap', gap:8 }}>
+          <Card style={{ padding: '14px 20px', position: 'relative' }}>
+            {/* Header */}
+            <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:10, flexWrap:'wrap', gap:8 }}>
               <div>
                 <span style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:15 }}>Coverage vs Proficiency</span>
-                <span style={{ fontSize:12, color:'var(--muted)', marginLeft:10 }}>{bubbles.length} skills with coverage data</span>
+                <span style={{ fontSize:12, color:'var(--muted)', marginLeft:10 }}>{bubbles.length} skills with coverage data — hover to identify, click to drill</span>
               </div>
-              <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
+              <div style={{ display:'flex', gap:14, flexWrap:'wrap', alignItems:'center' }}>
                 {[['#ff4444','< 30% — fragile'],['#ffc400','30–60% — moderate'],['#00c87a','> 60% — strong']].map(([c,l]) => (
                   <div key={c} style={{ display:'flex', alignItems:'center', gap:5 }}>
                     <div style={{ width:8, height:8, borderRadius:99, background:c }} />
@@ -1359,21 +1372,24 @@ function Heatmap({ assessments, categories, allUsers }) {
                   </div>
                 ))}
                 <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-                  <svg width="28" height="14" viewBox="0 0 28 14">
-                    <circle cx="5" cy="7" r="4" fill="none" stroke="var(--muted)" strokeWidth="1.2"/>
-                    <circle cx="20" cy="7" r="7" fill="none" stroke="var(--muted)" strokeWidth="1.2"/>
+                  <svg width="26" height="12" viewBox="0 0 26 12">
+                    <circle cx="4" cy="6" r="3" fill="none" stroke="var(--muted)" strokeWidth="1.2"/>
+                    <circle cx="18" cy="6" r="6" fill="none" stroke="var(--muted)" strokeWidth="1.2"/>
                   </svg>
                   <span style={{ fontSize:11, color:'var(--muted)' }}>size = criticality</span>
                 </div>
               </div>
             </div>
-            <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow:'visible' }}>
+
+            {/* Chart SVG */}
+            <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow:'visible', display:'block' }}
+              onMouseLeave={() => setBubbleHover(null)}>
               {quadrants.map((q,i) => (
-                <rect key={i} x={q.x} y={q.y} width={q.w} height={q.h} fill={q.color} opacity={q.opacity} />
+                <rect key={i} x={q.x} y={q.y} width={q.w} height={q.h} fill={q.color} opacity={q.opacity}/>
               ))}
               {quadrants.map((q,i) => (
                 <text key={i+'l'} x={q.x+q.w/2} y={q.y+q.h/2} textAnchor="middle" dominantBaseline="middle"
-                  style={{ fontSize:11, fill:q.color, fontWeight:600, opacity:0.45, fontFamily:'Space Grotesk, sans-serif', pointerEvents:'none' }}>
+                  style={{ fontSize:11, fill:q.color, fontWeight:600, opacity:0.4, fontFamily:'Space Grotesk, sans-serif', pointerEvents:'none' }}>
                   {q.label}
                 </text>
               ))}
@@ -1384,39 +1400,97 @@ function Heatmap({ assessments, categories, allUsers }) {
               {[0,25,50,75,100].map(v => (
                 <g key={v}>
                   <line x1={xPos(v)} y1={PAD.t+chartH} x2={xPos(v)} y2={PAD.t+chartH+4} stroke="var(--border)" strokeWidth="1"/>
-                  <text x={xPos(v)} y={PAD.t+chartH+14} textAnchor="middle"
+                  <text x={xPos(v)} y={PAD.t+chartH+13} textAnchor="middle"
                     style={{ fontSize:10, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>{v}%</text>
                 </g>
               ))}
               {[0,25,50,75,100].map(v => (
                 <g key={v}>
-                  <line x1={PAD.l-4} y1={yPos(v)} x2={PAD.l} y2={yPos(v)} stroke="var(--border)" strokeWidth="1"/>
-                  <text x={PAD.l-8} y={yPos(v)} textAnchor="end" dominantBaseline="middle"
+                  <line x1={PAD.l-3} y1={yPos(v)} x2={PAD.l} y2={yPos(v)} stroke="var(--border)" strokeWidth="1"/>
+                  <text x={PAD.l-6} y={yPos(v)} textAnchor="end" dominantBaseline="middle"
                     style={{ fontSize:10, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>{v}</text>
                 </g>
               ))}
-              <text x={PAD.l+chartW/2} y={H-4} textAnchor="middle"
-                style={{ fontSize:11, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>Coverage %</text>
-              <text x={10} y={PAD.t+chartH/2} textAnchor="middle" dominantBaseline="middle"
-                transform={`rotate(-90, 10, ${PAD.t+chartH/2})`}
-                style={{ fontSize:11, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>Proficiency</text>
+              <text x={PAD.l+chartW/2} y={H-3} textAnchor="middle"
+                style={{ fontSize:10, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>Coverage %</text>
+              <text x={9} y={PAD.t+chartH/2} textAnchor="middle" dominantBaseline="middle"
+                transform={`rotate(-90, 9, ${PAD.t+chartH/2})`}
+                style={{ fontSize:10, fill:'var(--muted)', fontFamily:'Space Grotesk, sans-serif' }}>Proficiency</text>
+
+              {/* Bubbles — no labels, just color + size + interaction */}
               {bubbles.map(b => {
-                const cx = xPos(b.cov), cy = yPos(b.weightedProf), r = bSize(b.criticality)
+                const cx  = xPos(b.cov + b.jitterX)
+                const cy  = yPos(b.weightedProf + b.jitterY)
+                const r   = bSize(b.criticality)
                 const col = riskColor(b.cov)
+                const isHovered  = bubbleHover?.id === b.id
+                const isSelected = bubbleSelected === b.id
                 return (
-                  <g key={b.id} style={{ cursor:'pointer' }} onClick={() => setDrillSkill({ id:b.id, name:b.name, catColor:b.catColor })}>
-                    <circle cx={cx} cy={cy} r={r} fill={col} opacity={0.75} stroke={col} strokeWidth="1"/>
-                    {r > 14 && (
-                      <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-                        style={{ fontSize:9, fill:'#fff', fontWeight:600, pointerEvents:'none', fontFamily:'Space Grotesk, sans-serif' }}>
-                        {b.name.length > 10 ? b.name.substring(0,9)+'…' : b.name}
-                      </text>
-                    )}
-                    <title>{b.name} — Coverage: {b.cov}% · Proficiency: {b.avg.toFixed(1)} · Raters: {b.raters}</title>
+                  <g key={b.id} style={{ cursor:'pointer' }}
+                    onMouseEnter={e => {
+                      const svg = e.currentTarget.closest('svg')
+                      const rect = svg.getBoundingClientRect()
+                      const scale = W / rect.width
+                      setBubbleHover({ id: b.id, svgX: cx, svgY: cy, b })
+                    }}
+                    onClick={() => {
+                      setBubbleSelected(b.id)
+                      setDrillSkill({ id:b.id, name:b.name, catColor:b.catColor })
+                    }}>
+                    {/* Selection ring */}
+                    {isSelected && <circle cx={cx} cy={cy} r={r+4} fill="none" stroke="#fff" strokeWidth="1.5" opacity="0.6"/>}
+                    {/* Hover ring */}
+                    {isHovered && !isSelected && <circle cx={cx} cy={cy} r={r+3} fill="none" stroke={col} strokeWidth="1.5" opacity="0.8"/>}
+                    <circle cx={cx} cy={cy} r={r}
+                      fill={col}
+                      opacity={isHovered || isSelected ? 1 : 0.65}
+                      stroke={col}
+                      strokeWidth={isSelected ? 2 : 0.5}
+                    />
                   </g>
                 )
               })}
             </svg>
+
+            {/* Hover tooltip — positioned relative to card, uses svgX/svgY converted to % */}
+            {bubbleHover && (() => {
+              const b = bubbleHover.b
+              const col = riskColor(b.cov)
+              const xPct = (bubbleHover.svgX / W) * 100
+              const yPct = (bubbleHover.svgY / H) * 100
+              const flipX = xPct > 65
+              const flipY = yPct > 65
+              return (
+                <div style={{
+                  position:'absolute',
+                  left: flipX ? 'auto' : `calc(${xPct}% + 14px)`,
+                  right: flipX ? `calc(${100-xPct}% + 14px)` : 'auto',
+                  top: flipY ? 'auto' : `calc(${yPct}% + 8px)`,
+                  bottom: flipY ? `calc(${100-yPct}% + 8px)` : 'auto',
+                  background:'var(--panel2)', border:`1px solid ${col}66`,
+                  borderRadius:10, padding:'10px 14px', minWidth:180, zIndex:50,
+                  pointerEvents:'none', boxShadow:`0 4px 20px #0006`
+                }}>
+                  <div style={{ fontFamily:'Space Grotesk, sans-serif', fontWeight:700, fontSize:13, color:'var(--ink)', marginBottom:6 }}>{b.name}</div>
+                  <div style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:99, background:col+'20', color:col, display:'inline-block', marginBottom:8 }}>
+                    {quadrantFor(b.cov, b.weightedProf)}
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                    {[
+                      ['Coverage',    `${b.cov}%`,              col],
+                      ['Proficiency', `${b.avg.toFixed(1)} — ${profLabelFn(b.avg)}`, '#4a90d9'],
+                      ['Raters',      `${b.raters} individual${b.raters!==1?'s':''}`, 'var(--muted)'],
+                      ['Criticality', `${(b.criticality).toFixed(1)}`, '#f59e0b'],
+                    ].map(([label, val, c]) => (
+                      <div key={label} style={{ display:'flex', justifyContent:'space-between', gap:12 }}>
+                        <span style={{ fontSize:11, color:'var(--muted)' }}>{label}</span>
+                        <span style={{ fontSize:11, fontWeight:700, color:c }}>{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
           </Card>
         )
       })()}
